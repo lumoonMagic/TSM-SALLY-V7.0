@@ -42,11 +42,12 @@ app.add_middleware(
 
 # Import routers
 try:
-    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings_enhanced
+    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings_enhanced, evening_summary
     
     # Include routers
     app.include_router(qa_rag_pure.router, prefix="/api/v1", tags=["Q&A with RAG"])
     app.include_router(morning_brief.router, prefix="/api/v1", tags=["Morning Brief"])
+    app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
     app.include_router(scenarios.router, prefix="/api/v1", tags=["Clinical Scenarios"])
     app.include_router(settings_enhanced.router, prefix="/api/v1", tags=["Settings"])
     
@@ -71,6 +72,7 @@ async def root():
             "redoc": "/redoc",
             "qa": "/api/v1/qa",
             "morning_brief": "/api/v1/morning-brief",
+            "evening_summary": "/api/v1/evening-summary",
             "scenarios": "/api/v1/scenarios",
             "settings": "/api/v1/settings"
         },
