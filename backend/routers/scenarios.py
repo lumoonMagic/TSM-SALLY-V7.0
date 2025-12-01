@@ -13,7 +13,7 @@ import os
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 
-router = APIRouter(prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
+router = APIRouter(tags=["Clinical Scenarios"])
 logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================

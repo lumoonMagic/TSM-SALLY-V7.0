@@ -20,7 +20,7 @@ import sqlite3
 # LLM validation
 from backend.ai.pure_provider_manager import PureProviderManager, get_pure_provider
 
-router = APIRouter(prefix="/api/v1/settings", tags=["Enhanced Settings & Configuration"])
+router = APIRouter(tags=["Enhanced Settings & Configuration"])
 logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================

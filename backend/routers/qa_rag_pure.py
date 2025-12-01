@@ -28,7 +28,7 @@ import asyncpg
 import sqlite3
 
 # Initialize router
-router = APIRouter(prefix="/api/v1/qa", tags=["Q&A with Pure Providers"])
+router = APIRouter(tags=["Q&A with Pure Providers"])
 logger = logging.getLogger(__name__)
 
 # ==================== GUARDRAILS ====================

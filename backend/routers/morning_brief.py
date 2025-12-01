@@ -18,7 +18,7 @@ from langchain.schema import SystemMessage, HumanMessage
 import asyncpg
 import sqlite3
 
-router = APIRouter(prefix="/api/v1/morning-brief", tags=["Morning Brief"])
+router = APIRouter(tags=["Morning Brief"])
 logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================
