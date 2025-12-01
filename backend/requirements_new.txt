@@ -28,7 +28,7 @@ chromadb==0.5.5
 # AI/ML Providers
 openai==1.45.0
 anthropic==0.34.2
-google-generativeai=0.7.2
+google-generativeai==0.7.2
 
 # Data Processing
 pandas==2.1.4
