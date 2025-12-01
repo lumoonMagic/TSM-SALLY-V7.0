@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sally TSM Agent Design System - Clinical Supply Chain Theme */
+/* All colors MUST be HSL for proper theming */
+
+@layer base {
+  :root {
+    /* Sally TSM Light Theme - Professional Medical/Clinical */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    /* Primary: Professional medical green */
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    /* Accent: Bright green for highlights */
+    --accent: 142 69% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 142 76% 36%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 142 76% 36%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 142 69% 58%;
+  }
+
+  .dark {
+    /* Sally TSM Dark Theme - Professional Dark Green */
+    --background: 155 25% 8%;
+    --foreground: 0 0% 98%;
+
+    --card: 155 20% 12%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 155 20% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Primary: Bright green for dark theme */
+    --primary: 142 69% 58%;
+    --primary-foreground: 155 25% 8%;
+
+    --secondary: 155 15% 18%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 155 15% 18%;
+    --muted-foreground: 155 8% 65%;
+
+    /* Accent: Vibrant green for highlights */
+    --accent: 142 76% 48%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 155 15% 22%;
+    --input: 155 15% 22%;
+    --ring: 142 69% 58%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar: Deep green theme */
+    --sidebar-background: 155 20% 10%;
+    --sidebar-foreground: 155 8% 85%;
+    --sidebar-primary: 142 69% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 155 15% 15%;
+    --sidebar-accent-foreground: 155 8% 85%;
+    --sidebar-border: 155 15% 15%;
+    --sidebar-ring: 142 69% 58%;
+  }
+
+  /* Blue White Theme - Blue background, white fonts, light blue highlights */
+  [data-theme="blue-white"] {
+    --background: 221.2 83.2% 53.3% !important; /* Blue background */
+    --foreground: 0 0% 100% !important; /* White text */
+    --card: 221.2 83.2% 48% !important; /* Darker blue for cards */
+    --card-foreground: 0 0% 100% !important; /* White text on cards */
+    --popover: 221.2 83.2% 48% !important;
+    --popover-foreground: 0 0% 100% !important;
+    --primary: 200 100% 80% !important; /* Light blue for highlights */
+    --primary-foreground: 221.2 83.2% 20% !important; /* Dark blue text on light blue */
+    --secondary: 221.2 83.2% 40% !important; /* Medium blue */
+    --secondary-foreground: 0 0% 100% !important;
+    --muted: 221.2 83.2% 40% !important;
+    --muted-foreground: 0 0% 90% !important; /* Light gray text */
+    --accent: 200 100% 80% !important; /* Light blue accents */
+    --accent-foreground: 221.2 83.2% 20% !important;
+    --destructive: 0 84.2% 60.2% !important;
+    --destructive-foreground: 0 0% 100% !important;
+    --border: 221.2 83.2% 35% !important; /* Darker blue borders */
+    --input: 221.2 83.2% 40% !important; /* Medium blue inputs */
+    --ring: 200 100% 80% !important; /* Light blue focus rings */
+    --radius: 0.5rem;
+    --sidebar-background: 221.2 83.2% 45% !important; /* Slightly different blue for sidebar */
+    --sidebar-foreground: 0 0% 100% !important;
+    --sidebar-primary: 200 100% 80% !important; /* Light blue for active items */
+    --sidebar-primary-foreground: 221.2 83.2% 20% !important;
+    --sidebar-accent: 221.2 83.2% 35% !important;
+    --sidebar-accent-foreground: 0 0% 100% !important;
+    --sidebar-border: 221.2 83.2% 30% !important;
+    --sidebar-ring: 200 100% 80% !important;
+  }
+
+  /* Black Yellow Theme */
+  [data-theme="black-yellow"] {
+    --background: 0 0% 3.9% !important;
+    --foreground: 0 0% 98% !important;
+    --card: 0 0% 3.9% !important;
+    --card-foreground: 0 0% 98% !important;
+    --popover: 0 0% 3.9% !important;
+    --popover-foreground: 0 0% 98% !important;
+    --primary: 47.9 95.8% 53.1% !important;
+    --primary-foreground: 0 0% 7% !important;
+    --secondary: 0 0% 14.9% !important;
+    --secondary-foreground: 0 0% 98% !important;
+    --muted: 0 0% 14.9% !important;
+    --muted-foreground: 0 0% 63.9% !important;
+    --accent: 47.9 95.8% 53.1% !important;
+    --accent-foreground: 0 0% 7% !important;
+    --destructive: 0 62.8% 30.6% !important;
+    --destructive-foreground: 0 0% 98% !important;
+    --border: 0 0% 14.9% !important;
+    --input: 0 0% 14.9% !important;
+    --ring: 47.9 95.8% 53.1% !important;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 7%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 47.9 95.8% 53.1%;
+    --sidebar-primary-foreground: 0 0% 7%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 85%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 47.9 95.8% 53.1%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Theme will be applied via data-theme attribute */
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--accent));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary));
+  }
+
+  /* Animation for loading states */
+  @keyframes pulse-green {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-pulse-green {
+    animation: pulse-green 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Custom gradient backgrounds */
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+  }
+
+  .bg-gradient-subtle {
+    background: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
+  }
+}
