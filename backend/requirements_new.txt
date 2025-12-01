@@ -1,0 +1,57 @@
+# Sally TSM - Backend Dependencies
+# Updated: 2024-11-28
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.2
+pydantic-settings==2.1.0
+
+# Database Drivers
+psycopg2-binary==2.9.9  # PostgreSQL
+pymongo==4.6.0  # MongoDB
+cx-Oracle==8.3.0  # Oracle
+pyodbc==5.0.1  # Microsoft SQL Server
+sqlalchemy==2.0.23  # ORM (optional)
+
+# AI/ML - LangChain & Multiple LLM Providers
+langchain==0.1.0
+langchain-core==0.1.0
+langchain-openai==0.0.5  # OpenAI integration
+langchain-anthropic==0.1.1  # Anthropic (Claude) integration
+langchain-google-genai==1.0.1  # Google Gemini integration
+
+# Vector Store
+chromadb==0.4.22
+
+# AI/ML Providers
+openai==1.12.0  # OpenAI API
+anthropic==0.18.1  # Anthropic Claude API
+google-generativeai==0.4.0  # Google Gemini API
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+
+# Task Queue
+celery[redis]==5.3.4  # For scheduled tasks (Morning Brief, Evening Summary)
+redis==5.0.1  # Celery backend
+
+# Document Processing
+Pillow==10.1.0  # Image processing
+pypdf2==3.0.1  # PDF reading
+python-docx==1.1.0  # Word documents
+openpyxl==3.1.2  # Excel files
+reportlab==4.0.7  # PDF generation
+
+# HTTP Clients
+requests==2.31.0
+httpx==0.25.2
+
+# Utilities
+python-dateutil==2.8.2
+python-dotenv==1.0.0  # Environment variables
+tenacity==8.2.3  # Retry logic
+
+# Monitoring & Logging
+sentry-sdk[fastapi]==1.39.2  # Error tracking (optional)
