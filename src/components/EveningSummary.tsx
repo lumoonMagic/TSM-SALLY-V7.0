@@ -29,7 +29,7 @@ export function EveningSummary() {
   const fetchEveningSummary = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const response = await fetch(`/api/v1/summary/evening/${today}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/evening-summary`);
       const data = await response.json();
       setSummary(data);
     } catch (error) {
