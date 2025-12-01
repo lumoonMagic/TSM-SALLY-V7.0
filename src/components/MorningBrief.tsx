@@ -2,356 +2,527 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { 
   TrendingUp, 
   TrendingDown, 
-  Package, 
-  Truck, 
+  Minus,
   AlertTriangle, 
+  AlertCircle, 
+  Info,
   Clock, 
   CheckCircle, 
-  XCircle,
-  Download,
-  FileText,
-  Calendar
+  Target,
+  Lightbulb,
+  Calendar,
+  RefreshCw,
+  Settings,
+  Download
 } from 'lucide-react';
-import { useApp } from '@/contexts/AppContext';
-import { getAllTasks, getAllInventory, getAllShipments, updateTask, Task } from '@/lib/database';
 import { useToast } from '@/hooks/use-toast';
 
-interface DailyMetrics {
-  inventoryStatus: {
-    total: number;
-    change: number;
-    trend: 'up' | 'down';
-  };
-  shipmentsAtRisk: {
-    count: number;
-    change: number;
-    trend: 'up' | 'down';
-  };
+// Match backend API structure
+interface AlertItem {
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  action_required?: string;
+}
+
+interface MetricItem {
+  name: string;
+  value: string;
+  change?: string;
+  status: 'good' | 'warning' | 'critical';
+}
+
+interface RecommendationItem {
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  estimated_impact?: string;
+}
+
+interface MorningBriefData {
+  brief_id: string;
+  date: string;
+  generated_at: string;
+  summary: string;
+  alerts: AlertItem[];
+  key_metrics: MetricItem[];
+  recommendations: RecommendationItem[];
+  upcoming_activities: string[];
 }
 
 export function MorningBrief() {
-  const { currentUser } = useApp();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [metrics, setMetrics] = useState<DailyMetrics>({
-    inventoryStatus: { total: 0, change: 0, trend: 'up' },
-    shipmentsAtRisk: { count: 0, change: 0, trend: 'down' }
-  });
+  const [brief, setBrief] = useState<MorningBriefData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(true); // Default to demo mode
+  const [showSettings, setShowSettings] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    // Load mode preference from localStorage
+    const savedMode = localStorage.getItem('appMode') || 'demo';
+    setDemoMode(savedMode === 'demo');
+    loadMorningBrief(savedMode === 'demo');
   }, []);
 
-  const loadData = async () => {
+  const loadMorningBrief = async (useDemoMode: boolean = demoMode) => {
+    setLoading(true);
+    setError(null);
+
     try {
-      const [tasksData, inventoryData, shipmentsData] = await Promise.all([
-        getAllTasks(),
-        getAllInventory(),
-        getAllShipments()
-      ]);
-
-      setTasks(tasksData);
-
-      // Calculate metrics
-      // Use screenshot values for demo
-      const totalInventory = 8492; // From screenshot
-      const delayedShipments = 15; // From screenshot
-
-      setMetrics({
-        inventoryStatus: {
-          total: totalInventory,
-          change: 5.2,
-          trend: 'up'
-        },
-        shipmentsAtRisk: {
-          count: delayedShipments,
-          change: -1.5,
-          trend: 'down'
+      if (useDemoMode) {
+        // DEMO MODE - Use realistic demo data
+        setBrief(getDemoMorningBrief());
+      } else {
+        // PRODUCTION MODE - Call backend API
+        const apiUrl = import.meta.env.VITE_API_URL;
+        
+        if (!apiUrl) {
+          throw new Error('VITE_API_URL not configured. Please set it in Vercel environment variables.');
         }
-      });
-    } catch (error) {
-      console.error('Failed to load morning brief data:', error);
+
+        const today = new Date().toISOString().split('T')[0];
+        const response = await fetch(`${apiUrl}/api/v1/morning-brief/${today}`);
+        
+        if (!response.ok) {
+          throw new Error(`API returned ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        setBrief(data);
+      }
+    } catch (err) {
+      console.error('Failed to load morning brief:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      
+      // Fallback to demo data on error
+      if (!useDemoMode) {
+        toast({
+          title: "Error loading brief",
+          description: "Falling back to demo data",
+          variant: "destructive"
+        });
+        setBrief(getDemoMorningBrief());
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTaskToggle = async (taskId: string, completed: boolean) => {
-    try {
-      await updateTask(taskId, { 
-        status: completed ? 'completed' : 'pending' 
-      });
+  const toggleMode = () => {
+    const newMode = !demoMode;
+    setDemoMode(newMode);
+    localStorage.setItem('appMode', newMode ? 'demo' : 'production');
+    loadMorningBrief(newMode);
+    
+    toast({
+      title: `Switched to ${newMode ? 'Demo' : 'Production'} Mode`,
+      description: newMode ? 'Using sample data' : 'Using live backend data'
+    });
+  };
+
+  // Demo data generator
+  const getDemoMorningBrief = (): MorningBriefData => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    return {
+      brief_id: `brief_${Date.now()}`,
+      date: today,
+      generated_at: new Date().toISOString(),
+      summary: "Good morning! Today's forecast shows stable operations with 47 active shipments across 12 sites. Inventory levels are healthy at 95% of target. Focus areas: Site 1034 requires attention for low stock levels, and 3 shipments need expedited processing to meet delivery deadlines. Temperature monitoring shows all shipments within acceptable ranges. Overall system performance is strong with 94.3% forecast accuracy.",
       
-      setTasks(prev => prev.map(task => 
-        task.id === taskId 
-          ? { ...task, status: completed ? 'completed' : 'pending' }
-          : task
-      ));
-    } catch (error) {
-      console.error('Failed to update task:', error);
-    }
+      alerts: [
+        {
+          severity: 'critical',
+          title: 'Low Inventory Alert',
+          description: 'Site 1034 (Germany) inventory level at 15% - below minimum threshold',
+          action_required: 'Expedite shipment SH-8942 scheduled for today'
+        },
+        {
+          severity: 'warning',
+          title: 'Delayed Shipments',
+          description: '3 shipments are running behind schedule due to customs delays',
+          action_required: 'Contact logistics partner for expedited clearance'
+        },
+        {
+          severity: 'info',
+          title: 'Weekly Enrollment Update',
+          description: 'Site 5042 (Japan) exceeded enrollment targets by 12% this week',
+          action_required: 'Review inventory allocation for next month'
+        }
+      ],
+      
+      key_metrics: [
+        {
+          name: 'Global Inventory',
+          value: '15,234 units',
+          change: '+2.8% from yesterday',
+          status: 'good'
+        },
+        {
+          name: 'Active Shipments',
+          value: '47 shipments',
+          change: '+5 new today',
+          status: 'good'
+        },
+        {
+          name: 'Sites at Risk',
+          value: '2 sites',
+          change: '-1 from yesterday',
+          status: 'warning'
+        },
+        {
+          name: 'Forecast Accuracy',
+          value: '94.3%',
+          change: '+1.2%',
+          status: 'good'
+        },
+        {
+          name: 'Temperature Compliance',
+          value: '98.5%',
+          change: 'Stable',
+          status: 'good'
+        },
+        {
+          name: 'Supply Days Remaining',
+          value: '47 days avg',
+          change: '+3 days',
+          status: 'good'
+        }
+      ],
+      
+      recommendations: [
+        {
+          priority: 'high',
+          title: 'Urgent: Inventory Replenishment',
+          description: 'Site 1034 requires immediate stock replenishment. Recommend expediting shipment SH-8942 scheduled for today. Alternative: reallocate 150 units from Site 2011 (overstocked by 25%).',
+          estimated_impact: 'Prevents potential site closure and study delays'
+        },
+        {
+          priority: 'high',
+          title: 'Regional Demand Rebalancing',
+          description: 'APAC region showing 18% higher enrollment than forecast. Recommend reallocating 450 units from EU (12% below forecast) within 2 weeks to avoid stockouts.',
+          estimated_impact: 'Reduces expiry risk by $67,500 and prevents APAC shortages'
+        },
+        {
+          priority: 'medium',
+          title: 'Optimize Shipping Routes',
+          description: 'European sites showing 15% longer delivery times. Review logistics partner SLA and consider alternative carriers for time-sensitive shipments.',
+          estimated_impact: 'Reduce average delivery time from 5.2 to 4.5 days'
+        },
+        {
+          priority: 'low',
+          title: 'Update Forecasting Model',
+          description: 'Q4 enrollment patterns differ from historical data. Schedule review of forecasting assumptions with clinical operations team.',
+          estimated_impact: 'Improve forecast accuracy from 94.3% to 96%+ target'
+        }
+      ],
+      
+      upcoming_activities: [
+        'Site 1034 emergency shipment departure (10:00 AM UTC)',
+        'Weekly inventory review with clinical operations (2:00 PM UTC)',
+        'Customs clearance follow-up for delayed shipments (3:30 PM UTC)',
+        'Monthly forecast review meeting (4:00 PM UTC)',
+        'Temperature excursion investigation report due by EOD'
+      ]
+    };
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      default: return 'bg-green-500';
-    }
-  };
-
-  const getPriorityIcon = (category: string) => {
-    switch (category) {
-      case 'inventory': return <Package className="h-4 w-4" />;
-      case 'shipment': return <Truck className="h-4 w-4" />;
-      case 'regulatory': return <FileText className="h-4 w-4" />;
-      default: return <Clock className="h-4 w-4" />;
-    }
-  };
-
-  const getHighlightIcon = (type: string) => {
-    switch (type) {
-      case 'warning': return <AlertTriangle className="h-5 w-5 text-orange-400" />;
-      case 'error': return <XCircle className="h-5 w-5 text-red-400" />;
-      case 'success': return <CheckCircle className="h-5 w-5 text-green-400" />;
-      default: return <Package className="h-5 w-5 text-blue-400" />;
-    }
-  };
-
-  const dailyPriorities = tasks.filter(task => 
-    task.status === 'pending' || task.status === 'in_progress'
-  ).slice(0, 4);
-  
-  const handleViewDetails = (highlightId: number, title: string) => {
-    switch (highlightId) {
-      case 1: // Delayed Shipments
-        toast({
-          title: "Delayed Shipments Details",
-          description: "Showing detailed view of 8 delayed shipments. Global Pharma: 4 shipments, MedLogistics: 2 shipments, Express Medical: 2 shipments.",
-        });
-        break;
-      case 2: // Drugs Nearing Expiry
-        toast({
-          title: "Expiring Inventory Details",
-          description: "24 SKUs expire within 30 days. Paracetamol 500mg (15 days), Study Drug A (22 days), Placebo B (28 days).",
-        });
-        break;
-      case 3: // Due Shipments Today
-        toast({
-          title: "Today's Deliveries",
-          description: "42 deliveries scheduled: Johns Hopkins (8), Mayo Clinic (12), London Clinical (15), Sydney Medical (7).",
-        });
-        break;
-      case 4: // Supply vs Demand
-        toast({
-          title: "Supply vs Demand Forecast",
-          description: "Supply exceeds demand by 15%. Inventory optimization opportunities available across 3 sites.",
-        });
-        break;
+  // Helper functions
+  const getSeverityIcon = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+        return <AlertCircle className="h-5 w-5 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
       default:
-        toast({
-          title: title,
-          description: "Detailed view would be shown here in a production environment.",
-        });
+        return <Info className="h-5 w-5 text-blue-500" />;
     }
   };
 
-  const highlights = [
-    {
-      id: 1,
-      type: 'error',
-      title: 'Delayed Shipments',
-      description: '8 shipments delayed by more than 24 hours',
-      action: 'View Details'
-    },
-    {
-      id: 2,
-      type: 'warning',
-      title: 'Drugs Nearing Expiry',
-      description: '24 SKUs expire within the next 30 days',
-      action: 'View Details'
-    },
-    {
-      id: 3,
-      type: 'success',
-      title: 'Due Shipments Today',
-      description: '42 deliveries scheduled for today',
-      action: 'View Details'
-    },
-    {
-      id: 4,
-      type: 'info',
-      title: 'Supply vs Demand',
-      description: '+15% Supply currently exceeds demand',
-      action: 'View Forecast'
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'good':
+        return 'text-green-600 bg-green-50 border-green-200';
+      case 'warning':
+        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+      case 'critical':
+        return 'text-red-600 bg-red-50 border-red-200';
+      default:
+        return 'text-gray-600 bg-gray-50 border-gray-200';
     }
-  ];
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return <Badge variant="destructive">High Priority</Badge>;
+      case 'medium':
+        return <Badge variant="outline" className="border-yellow-500 text-yellow-700">Medium Priority</Badge>;
+      default:
+        return <Badge variant="secondary">Low Priority</Badge>;
+    }
+  };
+
+  const getTrendIcon = (change?: string) => {
+    if (!change) return <Minus className="h-4 w-4" />;
+    if (change.includes('+') || change.toLowerCase().includes('increase')) {
+      return <TrendingUp className="h-4 w-4" />;
+    }
+    if (change.includes('-') || change.toLowerCase().includes('decrease')) {
+      return <TrendingDown className="h-4 w-4" />;
+    }
+    return <Minus className="h-4 w-4" />;
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-slate-400">Loading morning brief...</div>
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading morning brief...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !brief) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="h-6 w-6 text-red-600 mt-1" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-900 mb-2">Failed to Load Morning Brief</h3>
+                <p className="text-red-700 mb-4">{error}</p>
+                <div className="flex gap-2">
+                  <Button onClick={() => loadMorningBrief(demoMode)} variant="outline" size="sm">
+                    Try Again
+                  </Button>
+                  <Button onClick={() => { setDemoMode(true); loadMorningBrief(true); }} variant="outline" size="sm">
+                    Load Demo Data
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!brief) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="text-muted-foreground">No brief available</p>
+            <Button onClick={() => loadMorningBrief(demoMode)} variant="outline" size="sm" className="mt-4">
+              Load Brief
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-background p-4 max-w-none w-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header with Controls */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Morning Brief</h1>
-          <div className="flex items-center gap-2 text-slate-400 mt-1">
-            <Calendar className="h-4 w-4" />
-            <span>{new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}</span>
-          </div>
+          <h1 className="text-3xl font-bold text-foreground">
+            Morning Brief
+          </h1>
+          <p className="text-muted-foreground flex items-center gap-2 mt-1">
+            <Clock className="h-4 w-4" />
+            {new Date(brief.date).toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+            <Badge variant="outline" className="ml-2">{demoMode ? 'Demo Mode' : 'Production Mode'}</Badge>
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" className="border-border text-muted-foreground">
-            <Download className="h-4 w-4 mr-2" />
-            Export PDF
+        
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowSettings(!showSettings)}>
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
           </Button>
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={currentUser.avatar} />
-            <AvatarFallback className="bg-muted text-muted-foreground">
-              {currentUser.name.split(' ').map(n => n[0]).join('')}
-            </AvatarFallback>
-          </Avatar>
+          <Button variant="outline" size="sm" onClick={() => loadMorningBrief(demoMode)}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
         </div>
       </div>
 
-      {/* Today's Summary */}
-      <div className="mb-6 w-full">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Today's Summary</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
-          <Card className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm">Inventory Status</p>
-                  <p className="text-2xl font-bold text-foreground">{metrics.inventoryStatus.total.toLocaleString()}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {metrics.inventoryStatus.trend === 'up' ? (
-                      <TrendingUp className="h-4 w-4 text-green-400" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-red-400" />
-                    )}
-                    <span className={`text-sm ${
-                      metrics.inventoryStatus.trend === 'up' ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {metrics.inventoryStatus.change > 0 ? '+' : ''}{metrics.inventoryStatus.change}% vs last week
-                    </span>
-                  </div>
-                </div>
-                <Package className="h-8 w-8 text-slate-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-slate-800 border-slate-700">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Shipments at Risk</p>
-                  <p className="text-2xl font-bold text-white">{metrics.shipmentsAtRisk.count}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {metrics.shipmentsAtRisk.trend === 'down' ? (
-                      <TrendingDown className="h-4 w-4 text-green-400" />
-                    ) : (
-                      <TrendingUp className="h-4 w-4 text-red-400" />
-                    )}
-                    <span className={`text-sm ${
-                      metrics.shipmentsAtRisk.trend === 'down' ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {metrics.shipmentsAtRisk.change > 0 ? '+' : ''}{metrics.shipmentsAtRisk.change}% vs last week
-                    </span>
-                  </div>
-                </div>
-                <Truck className="h-8 w-8 text-slate-400" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Daily Priorities */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-4">Daily Priorities</h2>
-        <div className="space-y-3">
-          {dailyPriorities.map((task) => (
-            <Card key={task.id} className="bg-slate-800 border-slate-700">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-1 h-12 rounded ${getPriorityColor(task.priority)}`} />
-                  <Checkbox
-                    checked={task.status === 'completed'}
-                    onCheckedChange={(checked) => handleTaskToggle(task.id, checked as boolean)}
-                    className="border-slate-600"
+      {/* Settings Panel */}
+      {showSettings && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="demo-mode"
+                    checked={demoMode}
+                    onCheckedChange={toggleMode}
                   />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      {getPriorityIcon(task.category)}
-                      <h3 className="font-medium text-white">{task.title}</h3>
-                      <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">
-                        {task.priority}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-slate-400">{task.description}</p>
-                    <p className="text-xs text-slate-500 mt-1">Due: {task.due_date}</p>
-                  </div>
-                  <Button variant="outline" size="sm" className="border-slate-600 text-slate-300">
-                    View Details
-                  </Button>
+                  <Label htmlFor="demo-mode" className="cursor-pointer">
+                    {demoMode ? 'Demo Mode (Sample Data)' : 'Production Mode (Live Data)'}
+                  </Label>
                 </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowSettings(false)}>
+                Close
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              {demoMode 
+                ? 'Using realistic sample data for demonstration. No backend connection required.' 
+                : 'Connected to live backend API. Requires VITE_API_URL to be configured.'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Executive Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-blue-500" />
+            Executive Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-card-foreground leading-relaxed whitespace-pre-line">
+            {brief.summary}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Key Metrics Grid */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Target className="h-5 w-5" />
+          Key Metrics
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {brief.key_metrics.map((metric, idx) => (
+            <Card key={idx} className={`border-2 ${getStatusColor(metric.status)}`}>
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-2">
+                  <p className="text-sm font-medium text-muted-foreground">{metric.name}</p>
+                  {getTrendIcon(metric.change)}
+                </div>
+                <p className="text-2xl font-bold mb-1">{metric.value}</p>
+                {metric.change && (
+                  <p className="text-sm text-muted-foreground">{metric.change}</p>
+                )}
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
 
-      {/* Highlights */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4">Highlights</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {highlights.map((highlight) => (
-            <Card key={highlight.id} className="bg-slate-800 border-slate-700">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  {getHighlightIcon(highlight.type)}
-                  <div className="flex-1">
-                    <h3 className="font-medium text-white mb-1">{highlight.title}</h3>
-                    <p className="text-sm text-slate-400 mb-2">{highlight.description}</p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-6 border-green-600 text-green-400 hover:bg-green-600 hover:text-white mt-2"
-                      onClick={() => handleViewDetails(highlight.id, highlight.title)}
-                    >
-                      {highlight.action}
-                    </Button>
-                  </div>
+      {/* Alerts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            Priority Alerts
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {brief.alerts.map((alert, idx) => (
+              <div key={idx} className="flex items-start gap-4 p-4 border rounded-lg">
+                {getSeverityIcon(alert.severity)}
+                <div className="flex-1">
+                  <h3 className="font-semibold text-card-foreground mb-1">{alert.title}</h3>
+                  <p className="text-muted-foreground mb-2">{alert.description}</p>
+                  
+                  {alert.action_required && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                      <span className="font-medium text-blue-900">Action Required: </span>
+                      <span className="text-blue-700">{alert.action_required}</span>
+                    </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recommendations */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lightbulb className="h-5 w-5 text-yellow-500" />
+            AI Recommendations
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {brief.recommendations.map((rec, idx) => (
+              <div key={idx} className="p-4 border rounded-lg">
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="font-semibold text-lg text-card-foreground">
+                    {rec.title}
+                  </h3>
+                  {getPriorityBadge(rec.priority)}
+                </div>
+                <p className="text-muted-foreground leading-relaxed mb-2">
+                  {rec.description}
+                </p>
+                {rec.estimated_impact && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm">
+                    <span className="font-medium text-green-900">Impact: </span>
+                    <span className="text-green-700">{rec.estimated_impact}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Upcoming Activities */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-green-500" />
+            Today's Schedule
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-3">
+            {brief.upcoming_activities.map((activity, idx) => (
+              <li key={idx} className="flex items-start gap-3">
+                <Clock className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <span className="text-card-foreground">{activity}</span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
 
       {/* Footer */}
-      <div className="mt-8 text-center text-xs text-slate-500">
-        Last updated: {new Date().toLocaleString()}
+      <div className="text-sm text-muted-foreground text-center pt-4 border-t">
+        Generated at: {new Date(brief.generated_at).toLocaleString()} • Brief ID: {brief.brief_id}
       </div>
     </div>
   );
