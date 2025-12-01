@@ -16,7 +16,8 @@ sqlalchemy==2.0.23  # ORM (optional)
 
 # AI/ML - LangChain & Multiple LLM Providers
 langchain==0.1.0
-langchain-core==0.1.0
+langchain-core==0.1.52
+langchain-community==0.0.38
 langchain-openai==0.0.5  # OpenAI integration
 langchain-anthropic==0.1.1  # Anthropic (Claude) integration
 langchain-google-genai==1.0.1  # Google Gemini integration
