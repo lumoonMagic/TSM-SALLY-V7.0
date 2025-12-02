@@ -42,14 +42,14 @@ app.add_middleware(
 
 # Import routers
 try:
-    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings_enhanced, evening_summary
+    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary
     
     # Include routers
     app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
     app.include_router(morning_brief.router, prefix="/api/v1/morning-brief", tags=["Morning Brief"])
     app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
     app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
-    app.include_router(settings_enhanced.router, prefix="/api/v1/settings", tags=["Settings"])
+    app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
     
     logger.info("✅ All routers loaded successfully")
 except Exception as e:
