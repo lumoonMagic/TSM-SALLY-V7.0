@@ -507,6 +507,89 @@ class RAGSQLService:
             return f"SELECT 'No matching pattern' as message, '{question}' as original_question"
     
     
+    async def generate_and_execute_sql(
+        self,
+        question: str,
+        mode: str = "production",
+        query_type: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate SQL from question AND execute it against database
+        
+        Args:
+            question: Natural language question
+            mode: "production" or "demo"
+            query_type: Optional query type hint (e.g., "demand_forecast", "inventory_query")
+            filters: Optional filter parameters
+        
+        Returns:
+            Dict with query results:
+            {
+                "rows": [...],  # Query results
+                "row_count": int,
+                "query_used": str,
+                "mode": str
+            }
+        """
+        # Generate SQL
+        sql = await self.generate_sql(question, mode, filters)
+        
+        # Validate SQL
+        try:
+            self.validate_sql(sql)
+        except ValueError as e:
+            return {
+                "rows": [],
+                "row_count": 0,
+                "query_used": sql,
+                "mode": mode,
+                "error": str(e)
+            }
+        
+        # For demo mode, return mock result
+        if mode == "demo":
+            return {
+                "rows": [{"demo": True, "message": "Demo data"}],
+                "row_count": 1,
+                "query_used": sql,
+                "mode": "demo"
+            }
+        
+        # For production mode, execute against database
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise ValueError("DATABASE_URL environment variable not set")
+        
+        try:
+            conn = await asyncpg.connect(db_url)
+            try:
+                # Execute query
+                rows = await conn.fetch(sql)
+                
+                # Convert to dict format
+                result_rows = [dict(row) for row in rows]
+                
+                return {
+                    "rows": result_rows,
+                    "row_count": len(result_rows),
+                    "query_used": sql,
+                    "mode": "production"
+                }
+                
+            finally:
+                await conn.close()
+                
+        except Exception as e:
+            return {
+                "rows": [],
+                "row_count": 0,
+                "query_used": sql,
+                "mode": mode,
+                "error": f"Database error: {str(e)}"
+            }
+    
+    
     def validate_sql(self, sql: str) -> bool:
         """
         Validate that SQL query uses correct table names and syntax
