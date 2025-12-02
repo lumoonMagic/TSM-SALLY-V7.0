@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 import hashlib
 
-router = APIRouter(prefix="/api/v1/qa", tags=["Q&A"])
+router = APIRouter()
 
 
 # ============================================================================
