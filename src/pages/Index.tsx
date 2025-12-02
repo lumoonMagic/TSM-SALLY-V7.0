@@ -83,14 +83,14 @@ const Index = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex bg-background">
-        {/* Sidebar */}
-        <div className={`bg-sidebar-background border-r border-sidebar-border transition-all duration-300 ${
+        {/* ✅ FIX 1: Sidebar with proper icon sizing when collapsed */}
+        <div className={`bg-sidebar-background border-r border-sidebar-border transition-all duration-300 flex-shrink-0 ${
           sidebarCollapsed ? 'w-16' : 'w-64'
         }`}>
           <div className="p-4 h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center gap-3 mb-8 px-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
                 <span className="text-primary-foreground font-bold text-sm">S</span>
               </div>
               {!sidebarCollapsed && (
@@ -101,13 +101,13 @@ const Index = () => {
               )}
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="ml-auto text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
+                className="ml-auto text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors flex-shrink-0"
               >
                 <Menu className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Navigation */}
+            {/* ✅ FIX 2: Navigation with proper icon sizing */}
             <nav className="space-y-2 mb-8">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
@@ -117,18 +117,23 @@ const Index = () => {
                   <button
                     key={item.id}
                     onClick={() => setActiveSection(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-left ${
+                    className={`w-full flex items-center gap-3 rounded-lg transition-colors text-left ${
+                      sidebarCollapsed 
+                        ? 'px-2 py-3 justify-center' 
+                        : 'px-3 py-3'
+                    } ${
                       isActive 
                         ? 'bg-sidebar-primary text-sidebar-primary-foreground' 
                         : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                     }`}
                     title={sidebarCollapsed ? item.label : undefined}
                   >
+                    {/* ✅ FIX 3: Icon size fixed to h-5 w-5 always */}
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     {!sidebarCollapsed && (
-                      <div className="flex-1">
-                        <div className="font-medium">{item.label}</div>
-                        <div className="text-xs opacity-75">{item.description}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{item.label}</div>
+                        <div className="text-xs opacity-75 truncate">{item.description}</div>
                       </div>
                     )}
                   </button>
@@ -138,17 +143,17 @@ const Index = () => {
 
             {/* User Profile */}
             <div className="mt-auto pt-4 border-t border-sidebar-border">
-              <div className="flex items-center gap-3 px-2">
-                <Avatar className="h-10 w-10">
+              <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : 'px-2'}`}>
+                <Avatar className="h-10 w-10 flex-shrink-0">
                   <AvatarImage src={currentUser.avatar} />
                   <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
                     {currentUser.name.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>
                 </Avatar>
                 {!sidebarCollapsed && (
-                  <div className="flex-1">
-                    <div className="text-sidebar-foreground font-medium text-sm">{currentUser.name}</div>
-                    <div className="text-sidebar-foreground/70 text-xs">{currentUser.role}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sidebar-foreground font-medium text-sm truncate">{currentUser.name}</div>
+                    <div className="text-sidebar-foreground/70 text-xs truncate">{currentUser.role}</div>
                   </div>
                 )}
               </div>
@@ -156,24 +161,23 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
+        {/* ✅ FIX 4: Main Content with flex-1 to expand when sidebar collapses */}
+        <div className="flex-1 flex flex-col min-w-0">
           {/* Top Bar */}
-          <header className="bg-card border-b border-border px-6 py-4">
+          <header className="bg-card border-b border-border px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-
-                <div>
-                  <h2 className="text-card-foreground font-semibold">
+              <div className="flex items-center gap-4 min-w-0 flex-1">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-card-foreground font-semibold truncate">
                     {navigationItems.find(item => item.id === activeSection)?.label}
                   </h2>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-sm truncate">
                     {navigationItems.find(item => item.id === activeSection)?.description}
                   </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-card-foreground">
                   <Bell className="h-4 w-4" />
                 </Button>
@@ -187,7 +191,7 @@ const Index = () => {
             </div>
           </header>
 
-          {/* Content Area */}
+          {/* ✅ FIX 5: Content Area expands properly */}
           <main className="flex-1 overflow-hidden">
             {renderActiveSection()}
           </main>
