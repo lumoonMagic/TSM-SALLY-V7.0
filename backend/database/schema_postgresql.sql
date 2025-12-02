@@ -146,7 +146,7 @@ CREATE TABLE gold_inventory (
     quantity_allocated INTEGER DEFAULT 0,
     quantity_available INTEGER GENERATED ALWAYS AS (quantity_on_hand - quantity_allocated) STORED,
     expiry_date DATE,
-    days_until_expiry INTEGER GENERATED ALWAYS AS (EXTRACT(DAY FROM (expiry_date - CURRENT_DATE))) STORED,
+    days_until_expiry INTEGER GENERATED ALWAYS AS ((expiry_date - CURRENT_DATE)) STORED,
     receipt_date DATE,
     storage_location VARCHAR(100),
     temperature_status VARCHAR(50) CHECK (temperature_status IN ('Normal', 'Excursion', 'Critical')),
@@ -182,7 +182,7 @@ CREATE TABLE gold_shipments (
     actual_delivery_date DATE,
     delivery_delay_days INTEGER GENERATED ALWAYS AS (
         CASE WHEN actual_delivery_date IS NOT NULL 
-        THEN EXTRACT(DAY FROM (actual_delivery_date - estimated_delivery_date))::INTEGER
+        THEN (actual_delivery_date - estimated_delivery_date)::INTEGER
         ELSE NULL END
     ) STORED,
     temperature_monitoring_enabled BOOLEAN DEFAULT true,
