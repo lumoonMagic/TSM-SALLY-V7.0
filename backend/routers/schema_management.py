@@ -484,3 +484,120 @@ async def download_schema():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download error: {str(e)}")
+
+
+@router.get("/table/{table_name}")
+async def get_single_table_info(table_name: str):
+    """
+    Get detailed information about a specific table
+    
+    Returns table schema, column details, and sample data (first 5 rows)
+    """
+    conn = await get_db_connection()
+    
+    try:
+        # Check if table exists
+        table_exists = await conn.fetchval("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = $1
+            )
+        """, table_name)
+        
+        if not table_exists:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+        # Get column information
+        columns = await conn.fetch("""
+            SELECT 
+                column_name,
+                data_type,
+                is_nullable,
+                column_default,
+                character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = $1
+            ORDER BY ordinal_position
+        """, table_name)
+        
+        # Get row count
+        row_count = await conn.fetchval(f"SELECT COUNT(*) FROM {table_name}")
+        
+        # Get table size
+        table_size = await conn.fetchval("""
+            SELECT pg_size_pretty(pg_total_relation_size($1::regclass))
+        """, table_name)
+        
+        # Get sample data (first 5 rows)
+        sample_data = await conn.fetch(f"SELECT * FROM {table_name} LIMIT 5")
+        
+        return {
+            "table_name": table_name,
+            "column_count": len(columns),
+            "row_count": row_count,
+            "table_size": table_size,
+            "columns": [
+                {
+                    "name": col["column_name"],
+                    "type": col["data_type"],
+                    "nullable": col["is_nullable"] == "YES",
+                    "default": col["column_default"],
+                    "max_length": col["character_maximum_length"]
+                }
+                for col in columns
+            ],
+            "sample_data": [dict(row) for row in sample_data]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching table info: {str(e)}")
+    finally:
+        await conn.close()
+
+
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint for schema management service
+    
+    Tests database connectivity and returns service status
+    """
+    try:
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {
+                "status": "unhealthy",
+                "service": "schema_management",
+                "error": "Database configuration missing"
+            }
+        
+        # Test database connection
+        conn = await asyncpg.connect(db_url)
+        try:
+            # Simple query to test connection
+            await conn.fetchval("SELECT 1")
+            
+            # Check if schema is deployed
+            table_count = await count_tables(conn)
+            
+            return {
+                "status": "healthy",
+                "service": "schema_management",
+                "database": "connected",
+                "schema_deployed": table_count > 0,
+                "table_count": table_count
+            }
+        finally:
+            await conn.close()
+            
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "service": "schema_management",
+            "database": "disconnected",
+            "error": str(e)
+        }
