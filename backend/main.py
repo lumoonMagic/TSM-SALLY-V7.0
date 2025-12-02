@@ -3,7 +3,8 @@ Sally TSM Backend - Main Application Entry Point
 FastAPI backend for Sally Trial Supply Management Agent
 Supports: Multi-LLM providers, RAG, Vector DB, PostgreSQL
 
-UPDATED: Phase 1A - Schema Management Router Added
+Phase 1A + 1B + 1C: Complete Implementation
+Database Foundation + LLM Integration + Analytical Algorithms
 """
 
 from fastapi import FastAPI, HTTPException
@@ -42,26 +43,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import routers - KEEP EXISTING PATTERN
+# Import routers
 try:
-    from backend.routers import (
-        qa_rag_pure, 
-        morning_brief, 
-        scenarios, 
-        settings, 
-        evening_summary,
-        schema_management  # Phase 1A - NEW
-    )
+    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary, schema_management, qa_ondemand, analytics
     
-    # Include routers - KEEP EXISTING PATTERN (with prefix and tags)
+    # Include existing routers
     app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
     app.include_router(morning_brief.router, prefix="/api/v1/morning-brief", tags=["Morning Brief"])
     app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
     app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
     app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
-    app.include_router(schema_management.router, prefix="/api/v1/schema", tags=["Schema Management"])  # Phase 1A - NEW
     
-    logger.info("✅ All routers loaded successfully")
+    # Phase 1A: Database Foundation
+    app.include_router(schema_management.router, prefix="/api/v1/schema", tags=["Schema Management"])
+    
+    # Phase 1B: LLM Integration + RAG
+    app.include_router(qa_ondemand.router, prefix="/api/v1/qa", tags=["Q&A On-Demand"])
+    
+    # Phase 1C: Analytical Algorithms
+    app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
+    
+    logger.info("✅ All routers loaded successfully (Phase 1A + 1B + 1C)")
 except Exception as e:
     logger.error(f"⚠️ Error loading routers: {e}")
 
@@ -76,16 +78,19 @@ async def root():
         "name": "Sally TSM Backend",
         "version": "7.0",
         "status": "running",
+        "phase": "1A + 1B + 1C - Complete Backend Implementation",
         "endpoints": {
             "health": "/api/v1/health",
             "docs": "/docs",
             "redoc": "/redoc",
+            "schema": "/api/v1/schema",
+            "qa_ondemand": "/api/v1/qa",
+            "analytics": "/api/v1/analytics",
             "qa": "/api/v1/qa-pure",
             "morning_brief": "/api/v1/morning-brief",
             "evening_summary": "/api/v1/evening-summary",
             "scenarios": "/api/v1/scenarios",
-            "settings": "/api/v1/settings",
-            "schema": "/api/v1/schema"  # Phase 1A - NEW
+            "settings": "/api/v1/settings"
         },
         "features": [
             "Multi-LLM Support (Gemini, OpenAI, Claude)",
@@ -93,7 +98,9 @@ async def root():
             "Vector DB Selection (4 options)",
             "Application Mode (Demo/Production)",
             "Configuration Override System",
-            "Database Schema Management"  # Phase 1A - NEW
+            "Database Schema Management (Phase 1A)",
+            "On-Demand Q&A with RAG (Phase 1B)",
+            "Analytical Algorithms (Phase 1C)"
         ]
     }
 
@@ -105,6 +112,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "7.0",
+        "phase": "1A + 1B + 1C",
         "application_mode": app_mode,
         "database": {
             "configured": bool(os.getenv("DATABASE_URL")),
@@ -128,14 +136,17 @@ async def version():
     """Get API version"""
     return {
         "version": "7.0",
-        "release_date": "2025-11-28",
+        "phase": "1A + 1B + 1C",
+        "release_date": "2025-12-02",
         "features": [
             "Application Mode (Demo/Production)",
             "Vector DB Selection (4 options)",
             "Configuration Override System",
             "Backend API Configuration",
             "Enhanced UI Configuration Cockpit",
-            "Database Schema Management (Phase 1A)"  # NEW
+            "Database Schema Management (Phase 1A)",
+            "On-Demand Q&A with RAG (Phase 1B)",
+            "Analytical Algorithms (Phase 1C)"
         ]
     }
 
@@ -174,7 +185,7 @@ async def general_exception_handler(request, exc):
 async def startup_event():
     """Initialize services on startup"""
     logger.info("=" * 80)
-    logger.info("Sally TSM Backend Starting...")
+    logger.info("Sally TSM Backend Starting... (Phase 1A + 1B + 1C)")
     logger.info("=" * 80)
     
     # Check application mode
@@ -206,7 +217,7 @@ async def startup_event():
     logger.info(f"✓ Vector DB type: {vector_db_type}")
     
     logger.info("=" * 80)
-    logger.info("✅ Sally TSM Backend Ready!")
+    logger.info("✅ Sally TSM Backend Ready! (Phase 1A + 1B + 1C)")
     logger.info("=" * 80)
 
 @app.on_event("shutdown")
