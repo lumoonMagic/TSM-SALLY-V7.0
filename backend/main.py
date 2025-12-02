@@ -45,7 +45,7 @@ app.add_middleware(
 
 # Import routers
 try:
-    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary, schema_management, qa_ondemand, analytics
+    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary, schema_management, qa_ondemand, analytics, reports
     
     # Include existing routers
     app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
@@ -62,6 +62,9 @@ try:
     
     # Phase 1C: Analytical Algorithms
     app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
+    
+    # Phase 1D: Reports & Batch Processing
+    app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
     
     logger.info("✅ All routers loaded successfully (Phase 1A + 1B + 1C)")
 except Exception as e:
@@ -86,6 +89,7 @@ async def root():
             "schema": "/api/v1/schema",
             "qa_ondemand": "/api/v1/qa",
             "analytics": "/api/v1/analytics",
+            "reports": "/api/v1/reports",
             "qa": "/api/v1/qa-pure",
             "morning_brief": "/api/v1/morning-brief",
             "evening_summary": "/api/v1/evening-summary",
