@@ -44,7 +44,7 @@ interface ConnectionTestResult {
   timestamp?: string;
 }
 
-export default function ComprehensiveSettingsPanel() {
+export function ConfigurationCockpit() {
   const { config, updateConfig, updateTheme } = useApp();
   const { toast } = useToast();
 
