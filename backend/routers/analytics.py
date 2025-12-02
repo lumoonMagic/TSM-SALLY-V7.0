@@ -18,7 +18,7 @@ router = APIRouter()
 
 class DemandForecastRequest(BaseModel):
     """Request model for demand forecasting"""
-    study_id: str
+    study_id: str = "STUDY-001"  # Default to first study
     site_id: str
     forecast_horizon_days: int = 90
     mode: str = "production"
@@ -37,7 +37,7 @@ class DemandForecastResponse(BaseModel):
 
 class InventoryOptimizationRequest(BaseModel):
     """Request model for inventory optimization"""
-    study_id: str
+    study_id: str = "STUDY-001"  # Default to first study
     site_id: str
     product_id: str
     mode: str = "production"
@@ -74,7 +74,7 @@ class ShipmentRiskResponse(BaseModel):
 
 class EnrollmentPredictionRequest(BaseModel):
     """Request model for enrollment prediction"""
-    study_id: str
+    study_id: str = "STUDY-001"  # Default to first study
     site_id: str
     prediction_horizon_days: int = 180
     mode: str = "production"
@@ -93,7 +93,7 @@ class EnrollmentPredictionResponse(BaseModel):
 
 class AnomalyDetectionRequest(BaseModel):
     """Request model for anomaly detection"""
-    study_id: str
+    study_id: str = "STUDY-001"  # Default to first study
     analysis_period_days: int = 30
     mode: str = "production"
 
