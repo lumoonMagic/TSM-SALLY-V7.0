@@ -17,6 +17,9 @@ interface ConnectionTestResult {
   timestamp: string;
 }
 
+// ✅ FIX: Get API URL from environment variable
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
+
 export default function SettingsPanel() {
   // State
   const [activeTab, setActiveTab] = useState('llm');
@@ -46,7 +49,8 @@ export default function SettingsPanel() {
 
   // Load available providers on mount
   useEffect(() => {
-    fetch('/api/v1/settings/llm-providers')
+    // ✅ FIX: Use absolute URL with API_BASE_URL
+    fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`)
       .then(res => res.json())
       .then(data => {
         setProviders(data.providers);
@@ -64,7 +68,8 @@ export default function SettingsPanel() {
     setLlmTestResult(null);
     
     try {
-      const response = await fetch('/api/v1/settings/llm-provider/test', {
+      // ✅ FIX: Use absolute URL
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,7 +97,10 @@ export default function SettingsPanel() {
     setDbTestResult(null);
     
     try {
-      const response = await fetch('/api/v1/settings/database/test', {
+      console.log('🔍 Testing database connection to:', `${API_BASE_URL}/api/v1/settings/database/test`);
+      
+      // ✅ FIX: Use absolute URL
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -105,9 +113,12 @@ export default function SettingsPanel() {
         })
       });
       
+      console.log('📡 Response status:', response.status);
       const result = await response.json();
+      console.log('📦 Response data:', result);
       setDbTestResult(result);
     } catch (error) {
+      console.error('❌ Database test error:', error);
       setDbTestResult({
         success: false,
         message: `Connection failed: ${error}`,
@@ -124,7 +135,8 @@ export default function SettingsPanel() {
     setVsTestResult(null);
     
     try {
-      const response = await fetch('/api/v1/settings/vector-store/test', {
+      // ✅ FIX: Use absolute URL
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/vector-store/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,6 +206,10 @@ export default function SettingsPanel() {
               <h2 className="text-2xl font-bold">Settings</h2>
               <p className="text-sm text-gray-600">
                 Configure LLM providers, database, and vector storage
+              </p>
+              {/* ✅ DEBUG: Show API URL being used */}
+              <p className="text-xs text-blue-600 mt-1">
+                🔗 API: {API_BASE_URL}
               </p>
             </div>
           </div>
@@ -333,7 +349,7 @@ export default function SettingsPanel() {
                         type="text"
                         value={dbHost}
                         onChange={(e) => setDbHost(e.target.value)}
-                        placeholder="containers-us-west-123.railway.app"
+                        placeholder="gondola.proxy.rlwy.net"
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -343,7 +359,7 @@ export default function SettingsPanel() {
                         type="text"
                         value={dbPort}
                         onChange={(e) => setDbPort(e.target.value)}
-                        placeholder="5432"
+                        placeholder="14111"
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -471,8 +487,8 @@ export default function SettingsPanel() {
         {/* Footer */}
         <div className="border-t p-6 bg-gray-50">
           <p className="text-sm text-gray-600">
-            💡 <strong>Tip:</strong> All connection tests run through the API layer to avoid CORS issues. 
-            Settings are validated before deployment.
+            💡 <strong>Tip:</strong> All connection tests run through the Railway API. 
+            Check the blue API URL at the top to verify the correct backend is being used.
           </p>
         </div>
       </div>
