@@ -17,8 +17,11 @@ interface ConnectionTestResult {
   timestamp: string;
 }
 
-// ✅ FIX: Get API URL from environment variable
+// ✅ Get API URL from environment variable with fallback
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
+
+console.log('🌐 API_BASE_URL loaded:', API_BASE_URL);
+console.log('🔧 Environment:', import.meta.env.MODE);
 
 export default function SettingsPanel() {
   // State
@@ -49,24 +52,35 @@ export default function SettingsPanel() {
 
   // Load available providers on mount
   useEffect(() => {
+    console.log('📡 Loading LLM providers from:', `${API_BASE_URL}/api/v1/settings/llm-providers`);
+    
     fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`)
-      .then(res => res.json())
+      .then(res => {
+        console.log('📡 LLM providers response status:', res.status);
+        return res.json();
+      })
       .then(data => {
+        console.log('📦 LLM providers data:', data);
         setProviders(data.providers);
         setConfiguredProviders(data.configured);
         if (data.configured.length > 0) {
           setSelectedProvider(data.configured[0]);
         }
       })
-      .catch(err => console.error('Failed to load providers:', err));
+      .catch(err => {
+        console.error('❌ Failed to load providers:', err);
+      });
   }, []);
 
   // Test LLM Connection
   const testLLMConnection = async () => {
+    console.log('🧪 Testing LLM connection...');
     setTestingLLM(true);
     setLlmTestResult(null);
     
     try {
+      console.log('📡 Request URL:', `${API_BASE_URL}/api/v1/settings/llm-provider/test`);
+      
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,9 +90,12 @@ export default function SettingsPanel() {
         })
       });
       
+      console.log('📡 LLM test response status:', response.status);
       const result = await response.json();
+      console.log('📦 LLM test result:', result);
       setLlmTestResult(result);
     } catch (error) {
+      console.error('❌ LLM test error:', error);
       setLlmTestResult({
         success: false,
         message: `Connection failed: ${error}`,
@@ -91,34 +108,53 @@ export default function SettingsPanel() {
 
   // Test Database Connection
   const testDatabaseConnection = async () => {
+    console.log('🔍 Testing database connection...');
+    console.log('📝 Database config:', { databaseType, dbHost, dbPort, dbName, dbUser });
+    
     setTestingDB(true);
     setDbTestResult(null);
     
     try {
-      console.log('🔍 Testing database connection to:', `${API_BASE_URL}/api/v1/settings/database/test`);
+      const url = `${API_BASE_URL}/api/v1/settings/database/test`;
+      console.log('📡 Request URL:', url);
       
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/test`, {
+      const body = {
+        database_type: databaseType,
+        host: dbHost,
+        port: parseInt(dbPort),
+        database: dbName,
+        username: dbUser,
+        password: dbPassword
+      };
+      console.log('📤 Request body:', { ...body, password: '***' });
+      
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
-          host: dbHost,
-          port: parseInt(dbPort),
-          database: dbName,
-          username: dbUser,
-          password: dbPassword
-        })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(body)
       });
       
       console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+      
       const result = await response.json();
       console.log('📦 Response data:', result);
+      
       setDbTestResult(result);
     } catch (error) {
       console.error('❌ Database test error:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
       setDbTestResult({
         success: false,
-        message: `Connection failed: ${error}`,
+        message: `Connection failed: ${error.message || error}`,
         timestamp: new Date().toISOString()
       });
     } finally {
@@ -128,10 +164,13 @@ export default function SettingsPanel() {
 
   // Test Vector Store Connection
   const testVectorStoreConnection = async () => {
+    console.log('🧪 Testing vector store connection...');
     setTestingVS(true);
     setVsTestResult(null);
     
     try {
+      console.log('📡 Request URL:', `${API_BASE_URL}/api/v1/settings/vector-store/test`);
+      
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/vector-store/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,9 +183,12 @@ export default function SettingsPanel() {
         })
       });
       
+      console.log('📡 Vector store test response status:', response.status);
       const result = await response.json();
+      console.log('📦 Vector store test result:', result);
       setVsTestResult(result);
     } catch (error) {
+      console.error('❌ Vector store test error:', error);
       setVsTestResult({
         success: false,
         message: `Connection failed: ${error}`,
@@ -205,6 +247,9 @@ export default function SettingsPanel() {
               </p>
               <p className="text-xs text-blue-600 mt-1">
                 🔗 API: {API_BASE_URL}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Environment: {import.meta.env.MODE} | VITE_API_URL: {import.meta.env.VITE_API_URL || 'not set'}
               </p>
             </div>
           </div>
@@ -344,7 +389,7 @@ export default function SettingsPanel() {
                         type="text"
                         value={dbHost}
                         onChange={(e) => setDbHost(e.target.value)}
-                        placeholder="containers-us-west-123.railway.app"
+                        placeholder="postgres.railway.internal"
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -398,7 +443,10 @@ export default function SettingsPanel() {
 
               {/* Test Connection Button */}
               <button
-                onClick={testDatabaseConnection}
+                onClick={() => {
+                  console.log('🖱️ Test Database Connection button clicked!');
+                  testDatabaseConnection();
+                }}
                 disabled={testingDB}
                 className="w-full bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
@@ -482,8 +530,8 @@ export default function SettingsPanel() {
         {/* Footer */}
         <div className="border-t p-6 bg-gray-50">
           <p className="text-sm text-gray-600">
-            💡 <strong>Tip:</strong> All connection tests run through the API layer to avoid CORS issues. 
-            Settings are validated before deployment.
+            💡 <strong>Tip:</strong> All connection tests run through the Railway API. 
+            Check the console (F12) for detailed debugging information.
           </p>
         </div>
       </div>
