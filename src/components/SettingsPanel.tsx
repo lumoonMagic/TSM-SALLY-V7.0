@@ -49,7 +49,6 @@ export default function SettingsPanel() {
 
   // Load available providers on mount
   useEffect(() => {
-    // ✅ FIX: Use absolute URL with API_BASE_URL
     fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`)
       .then(res => res.json())
       .then(data => {
@@ -68,7 +67,6 @@ export default function SettingsPanel() {
     setLlmTestResult(null);
     
     try {
-      // ✅ FIX: Use absolute URL
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,7 +97,6 @@ export default function SettingsPanel() {
     try {
       console.log('🔍 Testing database connection to:', `${API_BASE_URL}/api/v1/settings/database/test`);
       
-      // ✅ FIX: Use absolute URL
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -135,7 +132,6 @@ export default function SettingsPanel() {
     setVsTestResult(null);
     
     try {
-      // ✅ FIX: Use absolute URL
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/vector-store/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -207,7 +203,6 @@ export default function SettingsPanel() {
               <p className="text-sm text-gray-600">
                 Configure LLM providers, database, and vector storage
               </p>
-              {/* ✅ DEBUG: Show API URL being used */}
               <p className="text-xs text-blue-600 mt-1">
                 🔗 API: {API_BASE_URL}
               </p>
@@ -349,7 +344,7 @@ export default function SettingsPanel() {
                         type="text"
                         value={dbHost}
                         onChange={(e) => setDbHost(e.target.value)}
-                        placeholder="gondola.proxy.rlwy.net"
+                        placeholder="containers-us-west-123.railway.app"
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -359,7 +354,7 @@ export default function SettingsPanel() {
                         type="text"
                         value={dbPort}
                         onChange={(e) => setDbPort(e.target.value)}
-                        placeholder="14111"
+                        placeholder="5432"
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -487,8 +482,8 @@ export default function SettingsPanel() {
         {/* Footer */}
         <div className="border-t p-6 bg-gray-50">
           <p className="text-sm text-gray-600">
-            💡 <strong>Tip:</strong> All connection tests run through the Railway API. 
-            Check the blue API URL at the top to verify the correct backend is being used.
+            💡 <strong>Tip:</strong> All connection tests run through the API layer to avoid CORS issues. 
+            Settings are validated before deployment.
           </p>
         </div>
       </div>
