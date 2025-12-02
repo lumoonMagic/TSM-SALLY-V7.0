@@ -9,7 +9,7 @@ import os
 import asyncpg
 from datetime import datetime
 
-router = APIRouter(prefix="/api/v1/schema", tags=["Schema Management"])
+router = APIRouter()
 
 
 # ============================================================================
