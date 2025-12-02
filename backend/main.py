@@ -42,13 +42,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================================================================
-# Import routers
-# ============================================================================
-
+# Import routers - KEEP EXISTING PATTERN
 try:
-    # Import all routers (without 'backend.' prefix for Railway)
-    from routers import (
+    from backend.routers import (
         qa_rag_pure, 
         morning_brief, 
         scenarios, 
@@ -57,18 +53,17 @@ try:
         schema_management  # Phase 1A - NEW
     )
     
-    # Register routers (NO additional prefixes - routers define their own)
-    app.include_router(qa_rag_pure.router)       # /api/v1/qa-pure
-    app.include_router(morning_brief.router)     # /api/v1/morning-brief
-    app.include_router(evening_summary.router)   # /api/v1/evening-summary
-    app.include_router(scenarios.router)         # /api/v1/scenarios
-    app.include_router(settings.router)          # /api/v1/settings
-    app.include_router(schema_management.router) # /api/v1/schema (Phase 1A)
+    # Include routers - KEEP EXISTING PATTERN (with prefix and tags)
+    app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
+    app.include_router(morning_brief.router, prefix="/api/v1/morning-brief", tags=["Morning Brief"])
+    app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
+    app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
+    app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
+    app.include_router(schema_management.router, prefix="/api/v1/schema", tags=["Schema Management"])  # Phase 1A - NEW
     
-    logger.info("✅ All routers loaded successfully (including Phase 1A)")
+    logger.info("✅ All routers loaded successfully")
 except Exception as e:
     logger.error(f"⚠️ Error loading routers: {e}")
-    logger.exception(e)  # Print full traceback for debugging
 
 # ============================================================================
 # Root Endpoints
