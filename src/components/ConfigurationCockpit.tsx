@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Settings, 
   Database, 
@@ -20,7 +21,11 @@ import {
   Sun,
   HardDrive,
   Zap,
-  Palette
+  Palette,
+  Upload,
+  Download,
+  Play,
+  FileText
 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { useToast } from '@/hooks/use-toast';
@@ -70,6 +75,12 @@ export function ConfigurationCockpit() {
   const [dbPassword, setDbPassword] = useState('');
   const [dbTestResult, setDbTestResult] = useState<ConnectionTestResult | null>(null);
   const [testingDB, setTestingDB] = useState(false);
+  const [savingDB, setSavingDB] = useState(false);
+
+  // ==================== DATABASE DEPLOYMENT ====================
+  const [deployingSchema, setDeployingSchema] = useState(false);
+  const [schemaFile, setSchemaFile] = useState<File | null>(null);
+  const [schemaText, setSchemaText] = useState('');
 
   // ==================== VECTOR STORE SETTINGS ====================
   const [vectorStoreType, setVectorStoreType] = useState('postgres_pgvector');
@@ -81,7 +92,7 @@ export function ConfigurationCockpit() {
 
   // ==================== LOAD INITIAL SETTINGS ====================
   useEffect(() => {
-    console.log('🚀 ComprehensiveSettingsPanel loaded!');
+    console.log('🚀 ConfigurationCockpit loaded!');
     console.log('🌐 API_BASE_URL:', API_BASE_URL);
     console.log('🎨 Current theme:', currentTheme);
     loadAllSettings();
@@ -153,7 +164,7 @@ export function ConfigurationCockpit() {
     setLlmTestResult(null);
     
     try {
-      console.log('🔍 Testing LLM connection to:', `${API_BASE_URL}/api/v1/settings/llm-provider/test`);
+      console.log('🔍 Testing LLM connection');
       
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
         method: 'POST',
@@ -164,10 +175,7 @@ export function ConfigurationCockpit() {
         })
       });
       
-      console.log('📡 Response status:', response.status);
       const result = await response.json();
-      console.log('📦 Response data:', result);
-      
       setLlmTestResult(result);
       
       toast({
@@ -200,7 +208,7 @@ export function ConfigurationCockpit() {
     setDbTestResult(null);
     
     try {
-      console.log('🔍 Testing database connection to:', `${API_BASE_URL}/api/v1/settings/database/test`);
+      console.log('🔍 Testing database connection');
       console.log('📊 Database config:', {
         type: databaseType,
         host: dbHost,
@@ -209,16 +217,17 @@ export function ConfigurationCockpit() {
         username: dbUser
       });
       
+      // ✅ FIX: Use correct field names (no "database_" prefix except for database_type)
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           database_type: databaseType,
-          database_host: dbHost,
-          database_port: parseInt(dbPort),
-          database_name: dbName,
-          database_username: dbUser,
-          database_password: dbPassword
+          host: dbHost,              // ✅ Changed from database_host
+          port: parseInt(dbPort),
+          database: dbName,          // ✅ Changed from database_name
+          username: dbUser,          // ✅ Changed from database_username
+          password: dbPassword       // ✅ Changed from database_password
         })
       });
       
@@ -252,14 +261,240 @@ export function ConfigurationCockpit() {
     }
   };
 
+  // ==================== SAVE DATABASE SETTINGS ====================
+  const saveDatabaseSettings = async () => {
+    setSavingDB(true);
+    
+    try {
+      console.log('💾 Saving database settings');
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database_type: databaseType,
+          host: dbHost,
+          port: parseInt(dbPort),
+          database: dbName,
+          username: dbUser,
+          password: dbPassword
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success || response.ok) {
+        // Update local config
+        updateConfig({
+          databaseType: databaseType as any,
+          databaseConfig: {
+            host: dbHost,
+            port: parseInt(dbPort),
+            database: dbName,
+            username: dbUser,
+            password: dbPassword
+          }
+        });
+        
+        toast({
+          title: "Settings Saved",
+          description: "Database configuration has been saved successfully",
+        });
+      } else {
+        throw new Error(result.message || 'Failed to save settings');
+      }
+    } catch (error) {
+      console.error('❌ Save error:', error);
+      toast({
+        title: "Save Failed",
+        description: `Could not save settings: ${error}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingDB(false);
+    }
+  };
+
+  // ==================== DATABASE DEPLOYMENT ====================
+  const deployDefaultSchema = async () => {
+    setDeployingSchema(true);
+    
+    try {
+      console.log('🚀 Deploying default database schema');
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/database/deploy-schema`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database_type: databaseType,
+          host: dbHost,
+          port: parseInt(dbPort),
+          database: dbName,
+          username: dbUser,
+          password: dbPassword,
+          include_sample_data: true
+        })
+      });
+      
+      const result = await response.json();
+      
+      toast({
+        title: result.success ? "Schema Deployed" : "Deployment Failed",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+    } catch (error) {
+      console.error('❌ Schema deployment error:', error);
+      toast({
+        title: "Deployment Error",
+        description: `Failed to deploy schema: ${error}`,
+        variant: "destructive",
+      });
+    } finally {
+      setDeployingSchema(false);
+    }
+  };
+
+  // ==================== SCHEMA DOWNLOAD ====================
+  const downloadDefaultSchema = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/database/schema/default`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sally_tsm_default_schema.sql';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Schema Downloaded",
+        description: "Default schema SQL file has been downloaded",
+      });
+    } catch (error) {
+      console.error('❌ Schema download error:', error);
+      toast({
+        title: "Download Failed",
+        description: `Could not download schema: ${error}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ==================== SCHEMA UPLOAD ====================
+  const handleSchemaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setSchemaFile(file);
+    
+    // Read file content
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setSchemaText(content);
+    };
+    reader.readAsText(file);
+    
+    toast({
+      title: "Schema File Loaded",
+      description: `${file.name} has been loaded. Review and deploy when ready.`,
+    });
+  };
+
+  const deployCustomSchema = async () => {
+    if (!schemaText) {
+      toast({
+        title: "No Schema Loaded",
+        description: "Please upload a schema file first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setDeployingSchema(true);
+    
+    try {
+      console.log('🚀 Deploying custom database schema');
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/database/deploy-custom-schema`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database_type: databaseType,
+          host: dbHost,
+          port: parseInt(dbPort),
+          database: dbName,
+          username: dbUser,
+          password: dbPassword,
+          schema_sql: schemaText
+        })
+      });
+      
+      const result = await response.json();
+      
+      toast({
+        title: result.success ? "Custom Schema Deployed" : "Deployment Failed",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+    } catch (error) {
+      console.error('❌ Custom schema deployment error:', error);
+      toast({
+        title: "Deployment Error",
+        description: `Failed to deploy custom schema: ${error}`,
+        variant: "destructive",
+      });
+    } finally {
+      setDeployingSchema(false);
+    }
+  };
+
+  // ==================== VIEW CURRENT SCHEMA ====================
+  const viewCurrentSchema = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/database/schema/current`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database_type: databaseType,
+          host: dbHost,
+          port: parseInt(dbPort),
+          database: dbName,
+          username: dbUser,
+          password: dbPassword
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSchemaText(result.schema);
+        toast({
+          title: "Schema Retrieved",
+          description: "Current database schema has been loaded",
+        });
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('❌ Schema view error:', error);
+      toast({
+        title: "Failed to Retrieve Schema",
+        description: `Could not load current schema: ${error}`,
+        variant: "destructive",
+      });
+    }
+  };
+
   // ==================== VECTOR STORE CONNECTION TEST ====================
   const testVectorStoreConnection = async () => {
     setTestingVS(true);
     setVsTestResult(null);
     
     try {
-      console.log('🔍 Testing vector store connection to:', `${API_BASE_URL}/api/v1/settings/vector-store/test`);
-      
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/vector-store/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,10 +503,7 @@ export function ConfigurationCockpit() {
         })
       });
       
-      console.log('📡 Response status:', response.status);
       const result = await response.json();
-      console.log('📦 Response data:', result);
-      
       setVsTestResult(result);
       
       toast({
@@ -311,7 +543,6 @@ export function ConfigurationCockpit() {
     });
   };
 
-  // Theme button styles
   const getThemeButtonClass = (theme: string) => {
     const baseClass = "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all";
     if (currentTheme === theme) {
@@ -327,7 +558,7 @@ export function ConfigurationCockpit() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Settings className="h-6 w-6 text-green-400" />
-          <h1 className="text-2xl font-bold text-white">Comprehensive Settings</h1>
+          <h1 className="text-2xl font-bold text-white">Configuration Cockpit</h1>
         </div>
         
         {/* Application Mode Toggle */}
@@ -358,7 +589,7 @@ export function ConfigurationCockpit() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="llm" className="space-y-6">
+      <Tabs defaultValue="database" className="space-y-6">
         <TabsList className="grid w-full grid-cols-5 bg-slate-800 border-slate-700">
           <TabsTrigger value="llm" className="data-[state=active]:bg-green-600">
             <Brain className="h-4 w-4 mr-2" />
@@ -368,9 +599,9 @@ export function ConfigurationCockpit() {
             <Database className="h-4 w-4 mr-2" />
             Database
           </TabsTrigger>
-          <TabsTrigger value="vectorstore" className="data-[state=active]:bg-green-600">
-            <HardDrive className="h-4 w-4 mr-2" />
-            Vector Store
+          <TabsTrigger value="schema" className="data-[state=active]:bg-green-600">
+            <FileText className="h-4 w-4 mr-2" />
+            Schema
           </TabsTrigger>
           <TabsTrigger value="appearance" className="data-[state=active]:bg-green-600">
             <Palette className="h-4 w-4 mr-2" />
@@ -382,101 +613,7 @@ export function ConfigurationCockpit() {
           </TabsTrigger>
         </TabsList>
 
-        {/* ==================== LLM CONFIGURATION TAB ==================== */}
-        <TabsContent value="llm" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-green-400" />
-                LLM Provider Configuration
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Provider Selection */}
-              <div className="space-y-2">
-                <Label htmlFor="llm-provider">LLM Provider</Label>
-                <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-                  <SelectTrigger id="llm-provider" className="bg-slate-900 border-slate-600">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gemini">Google Gemini</SelectItem>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="anthropic">Anthropic Claude</SelectItem>
-                    <SelectItem value="cohere">Cohere</SelectItem>
-                    <SelectItem value="ollama">Ollama (Local)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {configuredProviders.includes(selectedProvider) && (
-                  <Badge variant="outline" className="bg-green-900/30 text-green-400 border-green-500">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Configured
-                  </Badge>
-                )}
-              </div>
-
-              {/* API Key */}
-              <div className="space-y-2">
-                <Label htmlFor="llm-api-key">API Key</Label>
-                <Input
-                  id="llm-api-key"
-                  type="password"
-                  placeholder="Enter API key (optional if set in backend)"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="bg-slate-900 border-slate-600"
-                />
-              </div>
-
-              {/* Test Connection Button */}
-              <Button 
-                onClick={testLLMConnection}
-                disabled={testingLLM}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {testingLLM ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Testing Connection...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="h-4 w-4 mr-2" />
-                    Test LLM Connection
-                  </>
-                )}
-              </Button>
-
-              {/* Test Result */}
-              {llmTestResult && (
-                <div className={`p-4 rounded-lg border ${
-                  llmTestResult.success 
-                    ? 'bg-green-900/30 border-green-500' 
-                    : 'bg-red-900/30 border-red-500'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    {llmTestResult.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-400" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-red-400" />
-                    )}
-                    <span className="font-semibold">
-                      {llmTestResult.success ? 'Success' : 'Failed'}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm">{llmTestResult.message}</p>
-                  {llmTestResult.details && (
-                    <pre className="mt-2 text-xs bg-slate-900 p-2 rounded overflow-x-auto">
-                      {JSON.stringify(llmTestResult.details, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ==================== DATABASE CONFIGURATION TAB ==================== */}
+        {/* DATABASE CONFIGURATION TAB */}
         <TabsContent value="database" className="space-y-4">
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
@@ -497,7 +634,6 @@ export function ConfigurationCockpit() {
                     <SelectItem value="sqlite">SQLite (Local)</SelectItem>
                     <SelectItem value="postgresql">PostgreSQL</SelectItem>
                     <SelectItem value="mysql">MySQL</SelectItem>
-                    <SelectItem value="mongodb">MongoDB</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -505,13 +641,12 @@ export function ConfigurationCockpit() {
               {/* PostgreSQL/MySQL Fields */}
               {(databaseType === 'postgresql' || databaseType === 'mysql') && (
                 <>
-                  {/* Host and Port */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="db-host">Host</Label>
                       <Input
                         id="db-host"
-                        placeholder="localhost or postgres.railway.internal"
+                        placeholder="postgres.railway.internal"
                         value={dbHost}
                         onChange={(e) => setDbHost(e.target.value)}
                         className="bg-slate-900 border-slate-600"
@@ -529,7 +664,6 @@ export function ConfigurationCockpit() {
                     </div>
                   </div>
 
-                  {/* Database Name */}
                   <div className="space-y-2">
                     <Label htmlFor="db-name">Database Name</Label>
                     <Input
@@ -541,7 +675,6 @@ export function ConfigurationCockpit() {
                     />
                   </div>
 
-                  {/* Username and Password */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="db-user">Username</Label>
@@ -568,36 +701,44 @@ export function ConfigurationCockpit() {
                 </>
               )}
 
-              {/* SQLite Path */}
-              {databaseType === 'sqlite' && (
-                <div className="space-y-2">
-                  <Label htmlFor="sqlite-path">SQLite Database Path</Label>
-                  <Input
-                    id="sqlite-path"
-                    placeholder="./data/tsm.db"
-                    className="bg-slate-900 border-slate-600"
-                  />
-                </div>
-              )}
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-4">
+                <Button 
+                  onClick={testDatabaseConnection}
+                  disabled={testingDB}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  {testingDB ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    <>
+                      <TestTube className="h-4 w-4 mr-2" />
+                      Test Connection
+                    </>
+                  )}
+                </Button>
 
-              {/* Test Connection Button */}
-              <Button 
-                onClick={testDatabaseConnection}
-                disabled={testingDB}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {testingDB ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Testing Connection...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="h-4 w-4 mr-2" />
-                    Test Database Connection
-                  </>
-                )}
-              </Button>
+                <Button 
+                  onClick={saveDatabaseSettings}
+                  disabled={savingDB || testingDB}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                >
+                  {savingDB ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </div>
 
               {/* Test Result */}
               {dbTestResult && (
@@ -628,82 +769,123 @@ export function ConfigurationCockpit() {
           </Card>
         </TabsContent>
 
-        {/* ==================== VECTOR STORE TAB ==================== */}
-        <TabsContent value="vectorstore" className="space-y-4">
+        {/* SCHEMA MANAGEMENT TAB */}
+        <TabsContent value="schema" className="space-y-4">
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5 text-green-400" />
-                Vector Store Configuration
+                <FileText className="h-5 w-5 text-green-400" />
+                Database Schema Management
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Vector Store Type */}
-              <div className="space-y-2">
-                <Label htmlFor="vs-type">Vector Store Type</Label>
-                <Select value={vectorStoreType} onValueChange={setVectorStoreType}>
-                  <SelectTrigger id="vs-type" className="bg-slate-900 border-slate-600">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="postgres_pgvector">PostgreSQL + pgvector</SelectItem>
-                    <SelectItem value="chromadb">ChromaDB</SelectItem>
-                    <SelectItem value="pinecone">Pinecone</SelectItem>
-                    <SelectItem value="qdrant">Qdrant</SelectItem>
-                    <SelectItem value="weaviate">Weaviate</SelectItem>
-                  </SelectContent>
-                </Select>
+            <CardContent className="space-y-6">
+              {/* Deploy Default Schema */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg">Deploy Default Schema</h3>
+                <p className="text-sm text-slate-400">
+                  Deploy the default TSM database schema with sample data (sites, inventory, shipments)
+                </p>
+                <Button 
+                  onClick={deployDefaultSchema}
+                  disabled={deployingSchema}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  {deployingSchema ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deploying...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 mr-2" />
+                      Deploy Default Schema + Data
+                    </>
+                  )}
+                </Button>
               </div>
 
-              {/* Test Connection Button */}
-              <Button 
-                onClick={testVectorStoreConnection}
-                disabled={testingVS}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {testingVS ? (
+              <div className="border-t border-slate-700 my-4" />
+
+              {/* Download/Upload Schema */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg">Manage Custom Schema</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <Button 
+                    onClick={downloadDefaultSchema}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Default Schema
+                  </Button>
+
+                  <Button 
+                    onClick={viewCurrentSchema}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Current Schema
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="schema-upload">Upload Custom Schema (SQL File)</Label>
+                  <Input
+                    id="schema-upload"
+                    type="file"
+                    accept=".sql"
+                    onChange={handleSchemaUpload}
+                    className="bg-slate-900 border-slate-600"
+                  />
+                </div>
+
+                {schemaFile && (
+                  <div className="flex items-center gap-2 p-2 bg-slate-900 rounded">
+                    <FileText className="h-4 w-4 text-green-400" />
+                    <span className="text-sm">{schemaFile.name}</span>
+                  </div>
+                )}
+
+                {schemaText && (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Testing Connection...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="h-4 w-4 mr-2" />
-                    Test Vector Store Connection
+                    <div className="space-y-2">
+                      <Label htmlFor="schema-preview">Schema Preview</Label>
+                      <Textarea
+                        id="schema-preview"
+                        value={schemaText}
+                        onChange={(e) => setSchemaText(e.target.value)}
+                        rows={12}
+                        className="bg-slate-900 border-slate-600 font-mono text-xs"
+                      />
+                    </div>
+
+                    <Button 
+                      onClick={deployCustomSchema}
+                      disabled={deployingSchema}
+                      className="w-full bg-purple-600 hover:bg-purple-700"
+                    >
+                      {deployingSchema ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Deploying...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Deploy Custom Schema
+                        </>
+                      )}
+                    </Button>
                   </>
                 )}
-              </Button>
-
-              {/* Test Result */}
-              {vsTestResult && (
-                <div className={`p-4 rounded-lg border ${
-                  vsTestResult.success 
-                    ? 'bg-green-900/30 border-green-500' 
-                    : 'bg-red-900/30 border-red-500'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    {vsTestResult.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-400" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-red-400" />
-                    )}
-                    <span className="font-semibold">
-                      {vsTestResult.success ? 'Success' : 'Failed'}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm">{vsTestResult.message}</p>
-                  {vsTestResult.details && (
-                    <pre className="mt-2 text-xs bg-slate-900 p-2 rounded overflow-x-auto">
-                      {JSON.stringify(vsTestResult.details, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ==================== APPEARANCE TAB ==================== */}
+        {/* APPEARANCE TAB */}
         <TabsContent value="appearance" className="space-y-4">
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
@@ -713,11 +895,9 @@ export function ConfigurationCockpit() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Theme Selection */}
               <div className="space-y-3">
                 <Label>Select Theme</Label>
                 
-                {/* Dark Green Theme (Default) */}
                 <button
                   onClick={() => handleThemeChange('dark-green')}
                   className={getThemeButtonClass('dark-green')}
@@ -732,7 +912,6 @@ export function ConfigurationCockpit() {
                   </div>
                 </button>
 
-                {/* Blue White Theme */}
                 <button
                   onClick={() => handleThemeChange('blue-white')}
                   className={getThemeButtonClass('blue-white')}
@@ -747,7 +926,6 @@ export function ConfigurationCockpit() {
                   </div>
                 </button>
 
-                {/* Black Yellow Theme */}
                 <button
                   onClick={() => handleThemeChange('black-yellow')}
                   className={getThemeButtonClass('black-yellow')}
@@ -763,7 +941,6 @@ export function ConfigurationCockpit() {
                 </button>
               </div>
 
-              {/* Current Theme Display */}
               <div className="p-4 bg-slate-900 rounded-lg border border-slate-700">
                 <p className="text-sm text-slate-400">
                   Current theme: <span className="text-green-400 font-semibold">
@@ -775,7 +952,22 @@ export function ConfigurationCockpit() {
           </Card>
         </TabsContent>
 
-        {/* ==================== ADVANCED TAB ==================== */}
+        {/* LLM TAB (Placeholder) */}
+        <TabsContent value="llm" className="space-y-4">
+          <Card className="bg-slate-800 border-slate-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-green-400" />
+                LLM Provider Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-slate-400">LLM configuration coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ADVANCED TAB (Placeholder) */}
         <TabsContent value="advanced" className="space-y-4">
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
@@ -784,50 +976,23 @@ export function ConfigurationCockpit() {
                 Advanced Settings
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Environment Info */}
-              <div className="space-y-2">
-                <Label>Environment Information</Label>
-                <div className="p-4 bg-slate-900 rounded-lg border border-slate-700 space-y-2 text-sm">
-                  <div>
-                    <span className="text-slate-400">API Base URL:</span>{' '}
-                    <span className="text-blue-400">{API_BASE_URL}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Application Mode:</span>{' '}
-                    <span className={isDemo ? 'text-yellow-400' : 'text-green-400'}>
-                      {isDemo ? 'DEMO' : 'PRODUCTION'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Theme:</span>{' '}
-                    <span className="text-green-400">
-                      {currentTheme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                    </span>
-                  </div>
+            <CardContent>
+              <div className="p-4 bg-slate-900 rounded-lg border border-slate-700 space-y-2 text-sm">
+                <div>
+                  <span className="text-slate-400">API Base URL:</span>{' '}
+                  <span className="text-blue-400">{API_BASE_URL}</span>
                 </div>
-              </div>
-
-              {/* Feature Flags */}
-              <div className="space-y-2">
-                <Label>Feature Flags</Label>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
-                    <span className="text-sm">Enable RAG Features</span>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
-                    <span className="text-sm">Enable Scenarios</span>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
-                    <span className="text-sm">Enable Morning Brief</span>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
-                    <span className="text-sm">Enable Evening Summary</span>
-                    <Switch defaultChecked />
-                  </div>
+                <div>
+                  <span className="text-slate-400">Application Mode:</span>{' '}
+                  <span className={isDemo ? 'text-yellow-400' : 'text-green-400'}>
+                    {isDemo ? 'DEMO' : 'PRODUCTION'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Theme:</span>{' '}
+                  <span className="text-green-400">
+                    {currentTheme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  </span>
                 </div>
               </div>
             </CardContent>
