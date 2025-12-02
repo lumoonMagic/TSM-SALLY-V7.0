@@ -2,6 +2,8 @@
 Sally TSM Backend - Main Application Entry Point
 FastAPI backend for Sally Trial Supply Management Agent
 Supports: Multi-LLM providers, RAG, Vector DB, PostgreSQL
+
+UPDATED: Phase 1A - Schema Management Router Added
 """
 
 from fastapi import FastAPI, HTTPException
@@ -40,20 +42,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================================
 # Import routers
+# ============================================================================
+
 try:
-    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary
+    # Import all routers (without 'backend.' prefix for Railway)
+    from routers import (
+        qa_rag_pure, 
+        morning_brief, 
+        scenarios, 
+        settings, 
+        evening_summary,
+        schema_management  # Phase 1A - NEW
+    )
     
-    # Include routers
-    app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
-    app.include_router(morning_brief.router, prefix="/api/v1/morning-brief", tags=["Morning Brief"])
-    app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
-    app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
-    app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
+    # Register routers (NO additional prefixes - routers define their own)
+    app.include_router(qa_rag_pure.router)       # /api/v1/qa-pure
+    app.include_router(morning_brief.router)     # /api/v1/morning-brief
+    app.include_router(evening_summary.router)   # /api/v1/evening-summary
+    app.include_router(scenarios.router)         # /api/v1/scenarios
+    app.include_router(settings.router)          # /api/v1/settings
+    app.include_router(schema_management.router) # /api/v1/schema (Phase 1A)
     
-    logger.info("✅ All routers loaded successfully")
+    logger.info("✅ All routers loaded successfully (including Phase 1A)")
 except Exception as e:
     logger.error(f"⚠️ Error loading routers: {e}")
+    logger.exception(e)  # Print full traceback for debugging
 
 # ============================================================================
 # Root Endpoints
@@ -70,18 +85,20 @@ async def root():
             "health": "/api/v1/health",
             "docs": "/docs",
             "redoc": "/redoc",
-            "qa": "/api/v1/qa",
+            "qa": "/api/v1/qa-pure",
             "morning_brief": "/api/v1/morning-brief",
             "evening_summary": "/api/v1/evening-summary",
             "scenarios": "/api/v1/scenarios",
-            "settings": "/api/v1/settings"
+            "settings": "/api/v1/settings",
+            "schema": "/api/v1/schema"  # Phase 1A - NEW
         },
         "features": [
             "Multi-LLM Support (Gemini, OpenAI, Claude)",
             "Zero Cross-Dependencies",
             "Vector DB Selection (4 options)",
             "Application Mode (Demo/Production)",
-            "Configuration Override System"
+            "Configuration Override System",
+            "Database Schema Management"  # Phase 1A - NEW
         ]
     }
 
@@ -122,7 +139,8 @@ async def version():
             "Vector DB Selection (4 options)",
             "Configuration Override System",
             "Backend API Configuration",
-            "Enhanced UI Configuration Cockpit"
+            "Enhanced UI Configuration Cockpit",
+            "Database Schema Management (Phase 1A)"  # NEW
         ]
     }
 
