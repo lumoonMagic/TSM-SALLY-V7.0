@@ -25,13 +25,29 @@ import {
   Upload,
   Download,
   Play,
-  FileText
+  FileText,
+  Globe,
+  Monitor
 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { useToast } from '@/hooks/use-toast';
+import { 
+  configureDatabaseApi, 
+  configureLLMApi, 
+  getConfigStatus,
+  testDatabaseConnection,
+  deployDefaultSchema,
+  getDefaultSchema,
+  deployCustomSchema,
+  getCurrentSchema,
+  type DatabaseConfig,
+  type LLMConfig,
+  type ConfigStatus 
+} from '@/lib/configApi';
+import { isProductionMode, getDatabaseMode, getModeInfo } from '@/lib/mode';
 
 // ✅ API Base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
 
 interface LLMProvider {
   name: string;
@@ -49,13 +65,45 @@ interface ConnectionTestResult {
   timestamp?: string;
 }
 
+// 🎨 Theme Configurations
+const THEMES = [
+  {
+    id: 'dark-green',
+    name: 'Dark Green',
+    description: 'Classic dark theme with green accents',
+    preview: 'linear-gradient(135deg, #064e3b 0%, #10b981 100%)',
+    primaryColor: '#10b981',
+    backgroundColor: '#064e3b'
+  },
+  {
+    id: 'blue-white',
+    name: 'Navy Blue & White',
+    description: 'Professional navy blue theme',
+    preview: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+    primaryColor: '#3b82f6',
+    backgroundColor: '#1e3a8a'
+  },
+  {
+    id: 'black-yellow',
+    name: 'Black & Yellow',
+    description: 'Bold black theme with yellow highlights',
+    preview: 'linear-gradient(135deg, #1f2937 0%, #fbbf24 100%)',
+    primaryColor: '#fbbf24',
+    backgroundColor: '#1f2937'
+  }
+];
+
 export function ConfigurationCockpit() {
   const { config, updateConfig, updateTheme } = useApp();
   const { toast } = useToast();
 
+  // ==================== MODE DETECTION ====================
+  const [modeInfo, setModeInfo] = useState(getModeInfo());
+  const [backendStatus, setBackendStatus] = useState<ConfigStatus | null>(null);
+  const [loadingBackendStatus, setLoadingBackendStatus] = useState(false);
+
   // ==================== APPLICATION MODE ====================
-  const [applicationMode, setApplicationMode] = useState<'demo' | 'production'>('demo');
-  const [isDemo, setIsDemo] = useState(true);
+  const [applicationMode, setApplicationMode] = useState<'demo' | 'production'>(getDatabaseMode());
   const [switchingMode, setSwitchingMode] = useState(false);
 
   // ==================== LLM SETTINGS ====================
@@ -63,15 +111,17 @@ export function ConfigurationCockpit() {
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState('gemini');
   const [apiKey, setApiKey] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [llmTestResult, setLlmTestResult] = useState<ConnectionTestResult | null>(null);
   const [testingLLM, setTestingLLM] = useState(false);
+  const [savingLLM, setSavingLLM] = useState(false);
 
   // ==================== DATABASE SETTINGS ====================
   const [databaseType, setDatabaseType] = useState('postgresql');
-  const [dbHost, setDbHost] = useState('postgres.railway.internal');
+  const [dbHost, setDbHost] = useState('');
   const [dbPort, setDbPort] = useState('5432');
-  const [dbName, setDbName] = useState('railway');
-  const [dbUser, setDbUser] = useState('postgres');
+  const [dbName, setDbName] = useState('');
+  const [dbUser, setDbUser] = useState('');
   const [dbPassword, setDbPassword] = useState('');
   const [dbTestResult, setDbTestResult] = useState<ConnectionTestResult | null>(null);
   const [testingDB, setTestingDB] = useState(false);
@@ -81,180 +131,277 @@ export function ConfigurationCockpit() {
   const [deployingSchema, setDeployingSchema] = useState(false);
   const [schemaFile, setSchemaFile] = useState<File | null>(null);
   const [schemaText, setSchemaText] = useState('');
+  const [downloadingSchema, setDownloadingSchema] = useState(false);
+  const [viewingSchema, setViewingSchema] = useState(false);
 
   // ==================== VECTOR STORE SETTINGS ====================
   const [vectorStoreType, setVectorStoreType] = useState('postgres_pgvector');
-  const [vsTestResult, setVsTestResult] = useState<ConnectionTestResult | null>(null);
-  const [testingVS, setTestingVS] = useState(false);
 
   // ==================== THEME SETTINGS ====================
   const [currentTheme, setCurrentTheme] = useState<'dark-green' | 'blue-white' | 'black-yellow'>(config.theme || 'dark-green');
 
   // ==================== LOAD INITIAL SETTINGS ====================
   useEffect(() => {
-    console.log('🚀 ConfigurationCockpit loaded!');
+    console.log('🚀 ConfigurationCockpit PRODUCTION-READY loaded!');
     console.log('🌐 API_BASE_URL:', API_BASE_URL);
     console.log('🎨 Current theme:', currentTheme);
+    console.log('🔍 Mode Info:', modeInfo);
+    
     loadAllSettings();
+    checkBackendStatus();
   }, []);
 
+  // ==================== LOAD SETTINGS FROM LOCALSTORAGE ====================
   const loadAllSettings = async () => {
     try {
-      // Load application mode
-      const modeResponse = await fetch(`${API_BASE_URL}/api/v1/settings/mode`);
-      if (modeResponse.ok) {
-        const modeData = await modeResponse.json();
-        setApplicationMode(modeData.mode);
-        setIsDemo(modeData.is_demo);
-      }
-
       // Load LLM providers
-      const providersResponse = await fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`);
-      if (providersResponse.ok) {
-        const data = await providersResponse.json();
-        setProviders(data.providers);
-        setConfiguredProviders(data.configured);
-        if (data.configured.length > 0) {
-          setSelectedProvider(data.configured[0]);
+      await loadLLMProviders();
+      
+      // Load saved configurations from localStorage
+      const savedConfig = localStorage.getItem('sally-config');
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        
+        // Load database settings
+        if (parsed.database) {
+          setDatabaseType(parsed.database.type || 'postgresql');
+          setDbHost(parsed.database.host || '');
+          setDbPort(String(parsed.database.port || '5432'));
+          setDbName(parsed.database.database || '');
+          setDbUser(parsed.database.username || '');
+          // Don't load password from localStorage
+        }
+        
+        // Load LLM settings
+        if (parsed.llm) {
+          setSelectedProvider(parsed.llm.provider || 'gemini');
+          setSelectedModel(parsed.llm.model || '');
+          // Don't load API key from localStorage
+        }
+        
+        // Load vector store settings
+        if (parsed.vectorStore) {
+          setVectorStoreType(parsed.vectorStore.type || 'postgres_pgvector');
+        }
+        
+        // Load theme
+        if (parsed.theme) {
+          setCurrentTheme(parsed.theme);
         }
       }
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error('❌ Error loading settings:', error);
     }
   };
 
-  // ==================== MODE SWITCHING ====================
-  const switchMode = async () => {
-    const newMode = isDemo ? 'production' : 'demo';
-    setSwitchingMode(true);
-    
+  // ==================== BACKEND STATUS CHECK ====================
+  const checkBackendStatus = async () => {
+    if (!isProductionMode()) {
+      console.log('📍 Demo mode - skipping backend status check');
+      return;
+    }
+
+    setLoadingBackendStatus(true);
     try {
-      console.log('🔄 Switching mode to:', newMode);
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/mode/switch?mode=${newMode}`, {
-        method: 'POST'
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setApplicationMode(newMode);
-        setIsDemo(newMode === 'demo');
-        toast({
-          title: "Mode Switched",
-          description: `Application is now in ${newMode.toUpperCase()} mode`,
-        });
-      } else {
-        throw new Error(data.message || 'Failed to switch mode');
-      }
+      console.log('🔍 Checking backend status...');
+      const status = await getConfigStatus();
+      setBackendStatus(status);
+      console.log('✅ Backend status:', status);
     } catch (error) {
-      console.error('❌ Mode switch error:', error);
-      toast({
-        title: "Mode Switch Failed",
-        description: `Could not switch to ${newMode} mode`,
-        variant: "destructive",
-      });
+      console.error('❌ Backend status check failed:', error);
+      setBackendStatus(null);
     } finally {
-      setSwitchingMode(false);
+      setLoadingBackendStatus(false);
     }
   };
 
-  // ==================== LLM CONNECTION TEST ====================
-  const testLLMConnection = async () => {
+  // ==================== LOAD LLM PROVIDERS ====================
+  const loadLLMProviders = async () => {
+    try {
+      console.log('📡 Loading LLM providers from:', `${API_BASE_URL}/api/v1/settings/llm-providers`);
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load providers: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Loaded providers:', data);
+      setProviders(data.providers || {});
+      setConfiguredProviders(data.configured || []);
+    } catch (error) {
+      console.error('❌ Error loading LLM providers:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Load Providers',
+        description: 'Could not load LLM provider list'
+      });
+    }
+  };
+
+  // ==================== TEST LLM CONNECTION ====================
+  const handleTestLLM = async () => {
+    if (!apiKey) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing API Key',
+        description: 'Please enter an API key'
+      });
+      return;
+    }
+
     setTestingLLM(true);
     setLlmTestResult(null);
-    
+
     try {
-      console.log('🔍 Testing LLM connection');
-      
+      console.log('🧪 Testing LLM connection:', selectedProvider);
       const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: selectedProvider,
-          api_key: apiKey || undefined
+          api_key: apiKey,
+          model: selectedModel || undefined
         })
       });
-      
+
       const result = await response.json();
       setLlmTestResult(result);
-      
-      toast({
-        title: result.success ? "LLM Connection Successful" : "LLM Connection Failed",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
-      });
+
+      if (result.success) {
+        toast({
+          title: '✅ LLM Connection Successful',
+          description: result.message
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '❌ LLM Connection Failed',
+          description: result.message
+        });
+      }
     } catch (error) {
       console.error('❌ LLM test error:', error);
-      const errorResult = {
+      setLlmTestResult({
         success: false,
-        message: `Connection failed: ${error}`,
-        timestamp: new Date().toISOString()
-      };
-      setLlmTestResult(errorResult);
-      
+        message: error instanceof Error ? error.message : 'Connection test failed'
+      });
       toast({
-        title: "LLM Connection Error",
-        description: errorResult.message,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Test Failed',
+        description: 'Could not test LLM connection'
       });
     } finally {
       setTestingLLM(false);
     }
   };
 
-  // ==================== DATABASE CONNECTION TEST ====================
-  const testDatabaseConnection = async () => {
+  // ==================== SAVE LLM SETTINGS ====================
+  const handleSaveLLM = async () => {
+    if (!apiKey) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing API Key',
+        description: 'Please enter an API key'
+      });
+      return;
+    }
+
+    setSavingLLM(true);
+
+    try {
+      // Save to localStorage
+      const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
+      currentConfig.llm = {
+        provider: selectedProvider,
+        model: selectedModel
+      };
+      localStorage.setItem('sally-config', JSON.stringify(currentConfig));
+
+      // Save to backend if in production mode
+      if (isProductionMode()) {
+        console.log('💾 Saving LLM config to backend...');
+        const llmConfig: LLMConfig = {
+          provider: selectedProvider as any,
+          api_key: apiKey,
+          model: selectedModel || undefined
+        };
+        
+        await configureLLMApi(llmConfig);
+        
+        // Refresh backend status
+        await checkBackendStatus();
+      }
+
+      toast({
+        title: '✅ LLM Settings Saved',
+        description: `${selectedProvider} configuration saved successfully`
+      });
+
+      // Update app context
+      updateConfig({ llmProvider: selectedProvider });
+    } catch (error) {
+      console.error('❌ LLM save error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Save Failed',
+        description: error instanceof Error ? error.message : 'Could not save LLM settings'
+      });
+    } finally {
+      setSavingLLM(false);
+    }
+  };
+
+  // ==================== TEST DATABASE CONNECTION ====================
+  const handleTestDatabase = async () => {
+    if (!dbHost || !dbName || !dbUser) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please fill in all required database fields'
+      });
+      return;
+    }
+
     setTestingDB(true);
     setDbTestResult(null);
-    
+
     try {
-      console.log('🔍 Testing database connection');
-      console.log('📊 Database config:', {
-        type: databaseType,
+      console.log('🧪 Testing database connection');
+      const dbConfig: DatabaseConfig = {
+        type: databaseType as any,
         host: dbHost,
-        port: dbPort,
+        port: parseInt(dbPort),
         database: dbName,
-        username: dbUser
-      });
-      
-      // ✅ FIX: Use correct field names (no "database_" prefix except for database_type)
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
-          host: dbHost,              // ✅ Changed from database_host
-          port: parseInt(dbPort),
-          database: dbName,          // ✅ Changed from database_name
-          username: dbUser,          // ✅ Changed from database_username
-          password: dbPassword       // ✅ Changed from database_password
-        })
-      });
-      
-      console.log('📡 Response status:', response.status);
-      const result = await response.json();
-      console.log('📦 Response data:', result);
-      
+        username: dbUser,
+        password: dbPassword
+      };
+
+      const result = await testDatabaseConnection(dbConfig);
       setDbTestResult(result);
-      
-      toast({
-        title: result.success ? "Database Connection Successful" : "Database Connection Failed",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
-      });
+
+      if (result.success) {
+        toast({
+          title: '✅ Database Connection Successful',
+          description: result.message
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '❌ Database Connection Failed',
+          description: result.message
+        });
+      }
     } catch (error) {
       console.error('❌ Database test error:', error);
-      const errorResult = {
+      setDbTestResult({
         success: false,
-        message: `Connection failed: ${error}`,
-        timestamp: new Date().toISOString()
-      };
-      setDbTestResult(errorResult);
-      
+        message: error instanceof Error ? error.message : 'Connection test failed'
+      });
       toast({
-        title: "Database Connection Error",
-        description: errorResult.message,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Test Failed',
+        description: 'Could not test database connection'
       });
     } finally {
       setTestingDB(false);
@@ -262,190 +409,225 @@ export function ConfigurationCockpit() {
   };
 
   // ==================== SAVE DATABASE SETTINGS ====================
-  const saveDatabaseSettings = async () => {
+  const handleSaveDatabase = async () => {
+    if (!dbHost || !dbName || !dbUser) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please fill in all required database fields'
+      });
+      return;
+    }
+
     setSavingDB(true);
-    
+
     try {
-      console.log('💾 Saving database settings');
-      
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/database/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
+      // Save to localStorage
+      const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
+      currentConfig.database = {
+        type: databaseType,
+        host: dbHost,
+        port: parseInt(dbPort),
+        database: dbName,
+        username: dbUser
+      };
+      localStorage.setItem('sally-config', JSON.stringify(currentConfig));
+
+      // Save to backend if in production mode
+      if (isProductionMode()) {
+        console.log('💾 Saving database config to backend...');
+        const dbConfig: DatabaseConfig = {
+          type: databaseType as any,
           host: dbHost,
           port: parseInt(dbPort),
           database: dbName,
           username: dbUser,
           password: dbPassword
-        })
-      });
-      
-      const result = await response.json();
-      
-      if (result.success || response.ok) {
-        // Update local config
-        updateConfig({
-          databaseType: databaseType as any,
-          databaseConfig: {
-            host: dbHost,
-            port: parseInt(dbPort),
-            database: dbName,
-            username: dbUser,
-            password: dbPassword
-          }
-        });
+        };
         
-        toast({
-          title: "Settings Saved",
-          description: "Database configuration has been saved successfully",
-        });
-      } else {
-        throw new Error(result.message || 'Failed to save settings');
+        await configureDatabaseApi(dbConfig);
+        
+        // Refresh backend status
+        await checkBackendStatus();
       }
-    } catch (error) {
-      console.error('❌ Save error:', error);
+
       toast({
-        title: "Save Failed",
-        description: `Could not save settings: ${error}`,
-        variant: "destructive",
+        title: '✅ Database Settings Saved',
+        description: `${databaseType} configuration saved successfully`
+      });
+
+      // Update app context
+      updateConfig({ databaseType });
+    } catch (error) {
+      console.error('❌ Database save error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Save Failed',
+        description: error instanceof Error ? error.message : 'Could not save database settings'
       });
     } finally {
       setSavingDB(false);
     }
   };
 
-  // ==================== DATABASE DEPLOYMENT ====================
-  const deployDefaultSchema = async () => {
-    setDeployingSchema(true);
-    
-    try {
-      console.log('🚀 Deploying default database schema');
-      
-      const response = await fetch(`${API_BASE_URL}/api/v1/database/deploy-schema`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
-          host: dbHost,
-          port: parseInt(dbPort),
-          database: dbName,
-          username: dbUser,
-          password: dbPassword,
-          include_sample_data: true
-        })
-      });
-      
-      const result = await response.json();
-      
+  // ==================== DEPLOY DEFAULT SCHEMA ====================
+  const handleDeployDefaultSchema = async () => {
+    if (!dbHost || !dbName || !dbUser) {
       toast({
-        title: result.success ? "Schema Deployed" : "Deployment Failed",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please configure and test database connection first'
       });
+      return;
+    }
+
+    setDeployingSchema(true);
+
+    try {
+      console.log('🚀 Deploying default schema...');
+      const dbConfig: DatabaseConfig = {
+        type: databaseType as any,
+        host: dbHost,
+        port: parseInt(dbPort),
+        database: dbName,
+        username: dbUser,
+        password: dbPassword
+      };
+
+      const result = await deployDefaultSchema(dbConfig, true);
+
+      if (result.success) {
+        toast({
+          title: '✅ Schema Deployed Successfully',
+          description: result.message || 'Default DDL and sample data loaded'
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '❌ Schema Deployment Failed',
+          description: result.message
+        });
+      }
     } catch (error) {
       console.error('❌ Schema deployment error:', error);
       toast({
-        title: "Deployment Error",
-        description: `Failed to deploy schema: ${error}`,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Deployment Failed',
+        description: error instanceof Error ? error.message : 'Could not deploy schema'
       });
     } finally {
       setDeployingSchema(false);
     }
   };
 
-  // ==================== SCHEMA DOWNLOAD ====================
-  const downloadDefaultSchema = async () => {
+  // ==================== DOWNLOAD DEFAULT SCHEMA ====================
+  const handleDownloadSchema = async () => {
+    setDownloadingSchema(true);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/database/schema/default`);
-      const blob = await response.blob();
+      console.log('📥 Downloading default schema...');
+      const blob = await getDefaultSchema();
+      
+      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sally_tsm_default_schema.sql';
+      a.download = 'sally-tsm-schema.sql';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+      window.URL.revokeObjectURL(url);
+
       toast({
-        title: "Schema Downloaded",
-        description: "Default schema SQL file has been downloaded",
+        title: '✅ Schema Downloaded',
+        description: 'sally-tsm-schema.sql downloaded successfully'
       });
     } catch (error) {
       console.error('❌ Schema download error:', error);
       toast({
-        title: "Download Failed",
-        description: `Could not download schema: ${error}`,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Download Failed',
+        description: 'Could not download schema'
       });
+    } finally {
+      setDownloadingSchema(false);
     }
   };
 
-  // ==================== SCHEMA UPLOAD ====================
-  const handleSchemaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  // ==================== UPLOAD CUSTOM SCHEMA ====================
+  const handleSchemaFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setSchemaFile(file);
-    
+
     // Read file content
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
       setSchemaText(content);
     };
     reader.readAsText(file);
-    
+
     toast({
-      title: "Schema File Loaded",
-      description: `${file.name} has been loaded. Review and deploy when ready.`,
+      title: 'Schema File Loaded',
+      description: `${file.name} loaded successfully`
     });
   };
 
-  const deployCustomSchema = async () => {
+  // ==================== DEPLOY CUSTOM SCHEMA ====================
+  const handleDeployCustomSchema = async () => {
     if (!schemaText) {
       toast({
-        title: "No Schema Loaded",
-        description: "Please upload a schema file first",
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'No Schema',
+        description: 'Please upload a schema file first'
       });
       return;
     }
-    
-    setDeployingSchema(true);
-    
-    try {
-      console.log('🚀 Deploying custom database schema');
-      
-      const response = await fetch(`${API_BASE_URL}/api/v1/database/deploy-custom-schema`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
-          host: dbHost,
-          port: parseInt(dbPort),
-          database: dbName,
-          username: dbUser,
-          password: dbPassword,
-          schema_sql: schemaText
-        })
-      });
-      
-      const result = await response.json();
-      
+
+    if (!dbHost || !dbName || !dbUser) {
       toast({
-        title: result.success ? "Custom Schema Deployed" : "Deployment Failed",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please configure and test database connection first'
       });
+      return;
+    }
+
+    setDeployingSchema(true);
+
+    try {
+      console.log('🚀 Deploying custom schema...');
+      const dbConfig: DatabaseConfig = {
+        type: databaseType as any,
+        host: dbHost,
+        port: parseInt(dbPort),
+        database: dbName,
+        username: dbUser,
+        password: dbPassword
+      };
+
+      const result = await deployCustomSchema(dbConfig, schemaText);
+
+      if (result.success) {
+        toast({
+          title: '✅ Custom Schema Deployed',
+          description: result.message || 'Custom schema deployed successfully'
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '❌ Deployment Failed',
+          description: result.message
+        });
+      }
     } catch (error) {
       console.error('❌ Custom schema deployment error:', error);
       toast({
-        title: "Deployment Error",
-        description: `Failed to deploy custom schema: ${error}`,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Deployment Failed',
+        description: error instanceof Error ? error.message : 'Could not deploy custom schema'
       });
     } finally {
       setDeployingSchema(false);
@@ -453,547 +635,676 @@ export function ConfigurationCockpit() {
   };
 
   // ==================== VIEW CURRENT SCHEMA ====================
-  const viewCurrentSchema = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/database/schema/current`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          database_type: databaseType,
-          host: dbHost,
-          port: parseInt(dbPort),
-          database: dbName,
-          username: dbUser,
-          password: dbPassword
-        })
+  const handleViewCurrentSchema = async () => {
+    if (!dbHost || !dbName || !dbUser) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please configure and test database connection first'
       });
-      
-      const result = await response.json();
-      
+      return;
+    }
+
+    setViewingSchema(true);
+
+    try {
+      console.log('👀 Viewing current schema...');
+      const dbConfig: DatabaseConfig = {
+        type: databaseType as any,
+        host: dbHost,
+        port: parseInt(dbPort),
+        database: dbName,
+        username: dbUser,
+        password: dbPassword
+      };
+
+      const result = await getCurrentSchema(dbConfig);
+
       if (result.success) {
-        setSchemaText(result.schema);
+        setSchemaText(result.schema || 'No schema found');
         toast({
-          title: "Schema Retrieved",
-          description: "Current database schema has been loaded",
+          title: '✅ Schema Retrieved',
+          description: 'Current database schema loaded'
         });
       } else {
-        throw new Error(result.message);
+        toast({
+          variant: 'destructive',
+          title: '❌ Retrieval Failed',
+          description: result.message
+        });
       }
     } catch (error) {
-      console.error('❌ Schema view error:', error);
+      console.error('❌ Schema retrieval error:', error);
       toast({
-        title: "Failed to Retrieve Schema",
-        description: `Could not load current schema: ${error}`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  // ==================== VECTOR STORE CONNECTION TEST ====================
-  const testVectorStoreConnection = async () => {
-    setTestingVS(true);
-    setVsTestResult(null);
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/vector-store/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vector_store_type: vectorStoreType
-        })
-      });
-      
-      const result = await response.json();
-      setVsTestResult(result);
-      
-      toast({
-        title: result.success ? "Vector Store Connection Successful" : "Vector Store Connection Failed",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
-      });
-    } catch (error) {
-      console.error('❌ Vector store test error:', error);
-      const errorResult = {
-        success: false,
-        message: `Connection failed: ${error}`,
-        timestamp: new Date().toISOString()
-      };
-      setVsTestResult(errorResult);
-      
-      toast({
-        title: "Vector Store Connection Error",
-        description: errorResult.message,
-        variant: "destructive",
+        variant: 'destructive',
+        title: 'Retrieval Failed',
+        description: 'Could not retrieve schema'
       });
     } finally {
-      setTestingVS(false);
+      setViewingSchema(false);
     }
   };
 
-  // ==================== THEME CHANGE ====================
-  const handleThemeChange = (newTheme: 'dark-green' | 'blue-white' | 'black-yellow') => {
-    console.log('🎨 Changing theme to:', newTheme);
-    setCurrentTheme(newTheme);
-    updateTheme(newTheme);
-    updateConfig({ theme: newTheme });
+  // ==================== SWITCH APPLICATION MODE ====================
+  const handleModeSwitch = async (newMode: 'demo' | 'production') => {
+    setSwitchingMode(true);
+
+    try {
+      console.log(`🔄 Switching to ${newMode} mode...`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/mode/switch?mode=${newMode}`, {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setApplicationMode(newMode);
+        toast({
+          title: `✅ Switched to ${newMode === 'demo' ? 'Demo' : 'Production'} Mode`,
+          description: result.message
+        });
+        
+        // Refresh backend status
+        await checkBackendStatus();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Mode Switch Failed',
+          description: result.message
+        });
+      }
+    } catch (error) {
+      console.error('❌ Mode switch error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Switch Failed',
+        description: 'Could not switch mode'
+      });
+    } finally {
+      setSwitchingMode(false);
+    }
+  };
+
+  // ==================== CHANGE THEME ====================
+  const handleThemeChange = (themeId: string) => {
+    const theme = themeId as 'dark-green' | 'blue-white' | 'black-yellow';
+    setCurrentTheme(theme);
+    updateTheme(theme);
     
+    // Save to localStorage
+    const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
+    currentConfig.theme = theme;
+    localStorage.setItem('sally-config', JSON.stringify(currentConfig));
+
     toast({
-      title: "Theme Updated",
-      description: `Theme changed to ${newTheme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`,
+      title: '🎨 Theme Changed',
+      description: `Switched to ${THEMES.find(t => t.id === themeId)?.name || theme}`
     });
   };
 
-  const getThemeButtonClass = (theme: string) => {
-    const baseClass = "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all";
-    if (currentTheme === theme) {
-      return `${baseClass} border-green-500 bg-green-500/20`;
-    }
-    return `${baseClass} border-slate-600 hover:border-slate-500`;
-  };
-
-  // ==================== RENDER ====================
   return (
-    <div className="h-full overflow-y-auto bg-background p-6 max-w-none w-full">
-      {/* Header with Mode Toggle */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Settings className="h-6 w-6 text-green-400" />
-          <h1 className="text-2xl font-bold text-white">Configuration Cockpit</h1>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold flex items-center gap-2">
+            <Settings className="h-8 w-8" />
+            Configuration Cockpit
+          </h2>
+          <p className="text-muted-foreground mt-1">
+            Manage application settings, database connections, and integrations
+          </p>
         </div>
-        
-        {/* Application Mode Toggle */}
-        <div className="flex items-center gap-4 bg-slate-800 p-3 rounded-lg border border-slate-700">
-          <div className="flex items-center gap-2">
-            <Zap className={`h-4 w-4 ${isDemo ? 'text-yellow-400' : 'text-green-400'}`} />
-            <span className="text-sm font-medium">
-              Mode: <span className={isDemo ? 'text-yellow-400' : 'text-green-400'}>
-                {isDemo ? 'DEMO' : 'PRODUCTION'}
-              </span>
-            </span>
+      </div>
+
+      {/* ==================== BACKEND STATUS PANEL ==================== */}
+      {isProductionMode() && (
+        <Card className="border-blue-500/50 bg-blue-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Backend Status
+              {loadingBackendStatus && <Loader2 className="h-4 w-4 animate-spin" />}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Database Status */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-background">
+                <Database className="h-5 w-5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Database</p>
+                  <p className="text-xs text-muted-foreground">
+                    {backendStatus?.database.connected 
+                      ? `Connected (${backendStatus.database.type})`
+                      : 'Not connected'}
+                  </p>
+                </div>
+                {backendStatus?.database.connected ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+                )}
+              </div>
+
+              {/* LLM Status */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-background">
+                <Brain className="h-5 w-5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">LLM Provider</p>
+                  <p className="text-xs text-muted-foreground">
+                    {backendStatus?.llm.configured 
+                      ? `Configured (${backendStatus.llm.provider})`
+                      : 'Not configured'}
+                  </p>
+                </div>
+                {backendStatus?.llm.configured ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between p-3 rounded-lg bg-background">
+              <div className="flex items-center gap-2">
+                <Monitor className="h-4 w-4" />
+                <span className="text-sm">API Endpoint:</span>
+                <code className="text-xs bg-muted px-2 py-1 rounded">{API_BASE_URL}</code>
+              </div>
+              <Button size="sm" variant="outline" onClick={checkBackendStatus}>
+                Refresh Status
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ==================== MODE TOGGLE ==================== */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Application Mode
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{modeInfo.label}</p>
+              <p className="text-sm text-muted-foreground">{modeInfo.database}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm">Demo</span>
+              <Switch
+                checked={applicationMode === 'production'}
+                onCheckedChange={(checked) => handleModeSwitch(checked ? 'production' : 'demo')}
+                disabled={switchingMode}
+              />
+              <span className="text-sm">Production</span>
+            </div>
           </div>
-          <Switch
-            checked={!isDemo}
-            onCheckedChange={switchMode}
-            disabled={switchingMode}
-          />
-          {switchingMode && <Loader2 className="h-4 w-4 animate-spin" />}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* API Base URL Display */}
-      <div className="mb-4 p-3 bg-slate-800 rounded-lg border border-slate-700">
-        <p className="text-sm text-slate-400">
-          🔗 <span className="font-semibold">API:</span>{' '}
-          <span className="text-blue-400">{API_BASE_URL}</span>
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="database" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 bg-slate-800 border-slate-700">
-          <TabsTrigger value="llm" className="data-[state=active]:bg-green-600">
+      {/* ==================== MAIN CONFIGURATION TABS ==================== */}
+      <Tabs defaultValue="llm" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="llm">
             <Brain className="h-4 w-4 mr-2" />
             LLM Provider
           </TabsTrigger>
-          <TabsTrigger value="database" className="data-[state=active]:bg-green-600">
+          <TabsTrigger value="database">
             <Database className="h-4 w-4 mr-2" />
             Database
           </TabsTrigger>
-          <TabsTrigger value="schema" className="data-[state=active]:bg-green-600">
+          <TabsTrigger value="schema">
             <FileText className="h-4 w-4 mr-2" />
             Schema
           </TabsTrigger>
-          <TabsTrigger value="appearance" className="data-[state=active]:bg-green-600">
+          <TabsTrigger value="theme">
             <Palette className="h-4 w-4 mr-2" />
-            Appearance
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="data-[state=active]:bg-green-600">
-            <Settings className="h-4 w-4 mr-2" />
-            Advanced
+            Theme
           </TabsTrigger>
         </TabsList>
 
-        {/* DATABASE CONFIGURATION TAB */}
-        <TabsContent value="database" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
+        {/* ==================== LLM CONFIGURATION TAB ==================== */}
+        <TabsContent value="llm">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-green-400" />
-                Database Connection Settings
-              </CardTitle>
+              <CardTitle>LLM Provider Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Database Type */}
               <div className="space-y-2">
-                <Label htmlFor="db-type">Database Type</Label>
-                <Select value={databaseType} onValueChange={setDatabaseType}>
-                  <SelectTrigger id="db-type" className="bg-slate-900 border-slate-600">
+                <Label>Provider</Label>
+                <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="sqlite">SQLite (Local)</SelectItem>
-                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
+                    {Object.keys(providers).map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {providers[provider].name}
+                        {configuredProviders.includes(provider) && (
+                          <Badge variant="outline" className="ml-2">Configured</Badge>
+                        )}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* PostgreSQL/MySQL Fields */}
-              {(databaseType === 'postgresql' || databaseType === 'mysql') && (
+              {providers[selectedProvider] && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Model</Label>
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {providers[selectedProvider].chat_models.map((model) => (
+                          <SelectItem key={model} value={model}>{model}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>API Key</Label>
+                    <Input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter API key"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleTestLLM}
+                      disabled={testingLLM || !apiKey}
+                      variant="outline"
+                    >
+                      {testingLLM ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Testing...
+                        </>
+                      ) : (
+                        <>
+                          <TestTube className="mr-2 h-4 w-4" />
+                          Test Connection
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      onClick={handleSaveLLM}
+                      disabled={savingLLM || !apiKey}
+                    >
+                      {savingLLM ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Settings
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {llmTestResult && (
+                    <div className={`p-3 rounded-lg ${llmTestResult.success ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
+                      <div className="flex items-center gap-2">
+                        {llmTestResult.success ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <AlertCircle className="h-5 w-5 text-red-500" />
+                        )}
+                        <span className="text-sm">{llmTestResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ==================== DATABASE CONFIGURATION TAB ==================== */}
+        <TabsContent value="database">
+          <Card>
+            <CardHeader>
+              <CardTitle>Database Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Database Type</Label>
+                <Select value={databaseType} onValueChange={setDatabaseType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqlite">SQLite</SelectItem>
+                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                    <SelectItem value="mongodb">MongoDB</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {databaseType !== 'sqlite' && (
+                <>
+                  <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="db-host">Host</Label>
+                      <Label>Host</Label>
                       <Input
-                        id="db-host"
-                        placeholder="postgres.railway.internal"
                         value={dbHost}
                         onChange={(e) => setDbHost(e.target.value)}
-                        className="bg-slate-900 border-slate-600"
+                        placeholder="localhost or postgres.railway.internal"
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="db-port">Port</Label>
+                      <Label>Port</Label>
                       <Input
-                        id="db-port"
-                        placeholder="5432"
                         value={dbPort}
                         onChange={(e) => setDbPort(e.target.value)}
-                        className="bg-slate-900 border-slate-600"
+                        placeholder="5432"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="db-name">Database Name</Label>
+                    <Label>Database Name</Label>
                     <Input
-                      id="db-name"
-                      placeholder="railway"
                       value={dbName}
                       onChange={(e) => setDbName(e.target.value)}
-                      className="bg-slate-900 border-slate-600"
+                      placeholder="railway"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="db-user">Username</Label>
+                      <Label>Username</Label>
                       <Input
-                        id="db-user"
-                        placeholder="postgres"
                         value={dbUser}
                         onChange={(e) => setDbUser(e.target.value)}
-                        className="bg-slate-900 border-slate-600"
+                        placeholder="postgres"
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="db-password">Password</Label>
+                      <Label>Password</Label>
                       <Input
-                        id="db-password"
                         type="password"
-                        placeholder="Enter password"
                         value={dbPassword}
                         onChange={(e) => setDbPassword(e.target.value)}
-                        className="bg-slate-900 border-slate-600"
+                        placeholder="Enter password"
                       />
                     </div>
                   </div>
                 </>
               )}
 
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-4">
-                <Button 
-                  onClick={testDatabaseConnection}
-                  disabled={testingDB}
-                  className="w-full bg-green-600 hover:bg-green-700"
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleTestDatabase}
+                  disabled={testingDB || !dbHost || !dbName || !dbUser}
+                  variant="outline"
                 >
                   {testingDB ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Testing...
                     </>
                   ) : (
                     <>
-                      <TestTube className="h-4 w-4 mr-2" />
+                      <TestTube className="mr-2 h-4 w-4" />
                       Test Connection
                     </>
                   )}
                 </Button>
 
-                <Button 
-                  onClick={saveDatabaseSettings}
-                  disabled={savingDB || testingDB}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
+                <Button
+                  onClick={handleSaveDatabase}
+                  disabled={savingDB || !dbHost || !dbName || !dbUser}
                 >
                   {savingDB ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Saving...
                     </>
                   ) : (
                     <>
-                      <Save className="h-4 w-4 mr-2" />
+                      <Save className="mr-2 h-4 w-4" />
                       Save Settings
                     </>
                   )}
                 </Button>
               </div>
 
-              {/* Test Result */}
               {dbTestResult && (
-                <div className={`p-4 rounded-lg border ${
-                  dbTestResult.success 
-                    ? 'bg-green-900/30 border-green-500' 
-                    : 'bg-red-900/30 border-red-500'
-                }`}>
+                <div className={`p-3 rounded-lg ${dbTestResult.success ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
                   <div className="flex items-center gap-2">
                     {dbTestResult.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      <CheckCircle className="h-5 w-5 text-green-500" />
                     ) : (
-                      <AlertCircle className="h-5 w-5 text-red-400" />
+                      <AlertCircle className="h-5 w-5 text-red-500" />
                     )}
-                    <span className="font-semibold">
-                      {dbTestResult.success ? 'Success' : 'Failed'}
-                    </span>
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">{dbTestResult.message}</span>
+                      {dbTestResult.details && (
+                        <pre className="text-xs mt-2 p-2 bg-background rounded overflow-auto">
+                          {JSON.stringify(dbTestResult.details, null, 2)}
+                        </pre>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm">{dbTestResult.message}</p>
-                  {dbTestResult.details && (
-                    <pre className="mt-2 text-xs bg-slate-900 p-2 rounded overflow-x-auto">
-                      {JSON.stringify(dbTestResult.details, null, 2)}
-                    </pre>
-                  )}
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* SCHEMA MANAGEMENT TAB */}
-        <TabsContent value="schema" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
+        {/* ==================== SCHEMA MANAGEMENT TAB ==================== */}
+        <TabsContent value="schema">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-green-400" />
-                Database Schema Management
-              </CardTitle>
+              <CardTitle>Database Schema Management</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Deploy Default Schema */}
+              {/* Default Schema Section */}
               <div className="space-y-3">
-                <h3 className="font-semibold text-lg">Deploy Default Schema</h3>
-                <p className="text-sm text-slate-400">
-                  Deploy the default TSM database schema with sample data (sites, inventory, shipments)
+                <h3 className="text-lg font-semibold">Default Schema</h3>
+                <p className="text-sm text-muted-foreground">
+                  Deploy the default Sally TSM database schema with sample data
                 </p>
-                <Button 
-                  onClick={deployDefaultSchema}
-                  disabled={deployingSchema}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                >
-                  {deployingSchema ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Deploying...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 mr-2" />
-                      Deploy Default Schema + Data
-                    </>
-                  )}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleDeployDefaultSchema}
+                    disabled={deployingSchema}
+                  >
+                    {deployingSchema ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Deploying...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Deploy Default Schema
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={handleDownloadSchema}
+                    disabled={downloadingSchema}
+                    variant="outline"
+                  >
+                    {downloadingSchema ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Download Schema SQL
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              <div className="border-t border-slate-700 my-4" />
+              <div className="border-t pt-6">
+                {/* Custom Schema Section */}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold">Custom Schema</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Upload and deploy your own database schema
+                  </p>
 
-              {/* Download/Upload Schema */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg">Manage Custom Schema</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <Button 
-                    onClick={downloadDefaultSchema}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Default Schema
-                  </Button>
-
-                  <Button 
-                    onClick={viewCurrentSchema}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    View Current Schema
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="schema-upload">Upload Custom Schema (SQL File)</Label>
-                  <Input
-                    id="schema-upload"
-                    type="file"
-                    accept=".sql"
-                    onChange={handleSchemaUpload}
-                    className="bg-slate-900 border-slate-600"
-                  />
-                </div>
-
-                {schemaFile && (
-                  <div className="flex items-center gap-2 p-2 bg-slate-900 rounded">
-                    <FileText className="h-4 w-4 text-green-400" />
-                    <span className="text-sm">{schemaFile.name}</span>
+                  <div className="space-y-2">
+                    <Label>Upload Schema File (.sql)</Label>
+                    <Input
+                      type="file"
+                      accept=".sql"
+                      onChange={handleSchemaFileUpload}
+                    />
+                    {schemaFile && (
+                      <p className="text-sm text-green-600">
+                        ✅ {schemaFile.name} loaded
+                      </p>
+                    )}
                   </div>
-                )}
 
-                {schemaText && (
-                  <>
+                  {schemaText && (
                     <div className="space-y-2">
-                      <Label htmlFor="schema-preview">Schema Preview</Label>
+                      <Label>Schema Preview</Label>
                       <Textarea
-                        id="schema-preview"
                         value={schemaText}
                         onChange={(e) => setSchemaText(e.target.value)}
-                        rows={12}
-                        className="bg-slate-900 border-slate-600 font-mono text-xs"
+                        rows={10}
+                        className="font-mono text-xs"
                       />
                     </div>
+                  )}
 
-                    <Button 
-                      onClick={deployCustomSchema}
-                      disabled={deployingSchema}
-                      className="w-full bg-purple-600 hover:bg-purple-700"
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleDeployCustomSchema}
+                      disabled={deployingSchema || !schemaText}
                     >
                       {deployingSchema ? (
                         <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Deploying...
                         </>
                       ) : (
                         <>
-                          <Upload className="h-4 w-4 mr-2" />
+                          <Upload className="mr-2 h-4 w-4" />
                           Deploy Custom Schema
                         </>
                       )}
                     </Button>
-                  </>
-                )}
+
+                    <Button
+                      onClick={handleViewCurrentSchema}
+                      disabled={viewingSchema}
+                      variant="outline"
+                    >
+                      {viewingSchema ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="mr-2 h-4 w-4" />
+                          View Current Schema
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* APPEARANCE TAB */}
-        <TabsContent value="appearance" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
+        {/* ==================== THEME SETTINGS TAB ==================== */}
+        <TabsContent value="theme">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Palette className="h-5 w-5 text-green-400" />
-                Appearance & Theme
+                <Palette className="h-5 w-5" />
+                Theme Settings
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <Label>Select Theme</Label>
-                
-                <button
-                  onClick={() => handleThemeChange('dark-green')}
-                  className={getThemeButtonClass('dark-green')}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <div className="w-6 h-6 rounded bg-green-500"></div>
-                      <div className="w-6 h-6 rounded bg-slate-900"></div>
-                    </div>
-                    <span className="font-medium">Dark Green</span>
-                    {currentTheme === 'dark-green' && <CheckCircle className="h-4 w-4 text-green-400" />}
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleThemeChange('blue-white')}
-                  className={getThemeButtonClass('blue-white')}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <div className="w-6 h-6 rounded bg-blue-500"></div>
-                      <div className="w-6 h-6 rounded bg-white"></div>
-                    </div>
-                    <span className="font-medium">Blue & White</span>
-                    {currentTheme === 'blue-white' && <CheckCircle className="h-4 w-4 text-green-400" />}
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleThemeChange('black-yellow')}
-                  className={getThemeButtonClass('black-yellow')}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <div className="w-6 h-6 rounded bg-black"></div>
-                      <div className="w-6 h-6 rounded bg-yellow-400"></div>
-                    </div>
-                    <span className="font-medium">Black & Yellow</span>
-                    {currentTheme === 'black-yellow' && <CheckCircle className="h-4 w-4 text-green-400" />}
-                  </div>
-                </button>
+                <Select value={currentTheme} onValueChange={handleThemeChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {THEMES.map((theme) => (
+                      <SelectItem key={theme.id} value={theme.id}>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-6 h-6 rounded"
+                            style={{ background: theme.preview }}
+                          />
+                          <div>
+                            <p className="font-medium">{theme.name}</p>
+                            <p className="text-xs text-muted-foreground">{theme.description}</p>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="p-4 bg-slate-900 rounded-lg border border-slate-700">
-                <p className="text-sm text-slate-400">
-                  Current theme: <span className="text-green-400 font-semibold">
-                    {currentTheme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                  </span>
+              {/* Theme Preview */}
+              <div className="space-y-2">
+                <Label>Preview</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => handleThemeChange(theme.id)}
+                      className={`relative p-4 rounded-lg border-2 transition-all ${
+                        currentTheme === theme.id
+                          ? 'border-primary'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <div
+                        className="w-full h-24 rounded-lg mb-2"
+                        style={{ background: theme.preview }}
+                      />
+                      <p className="text-sm font-medium">{theme.name}</p>
+                      {currentTheme === theme.id && (
+                        <CheckCircle className="absolute top-2 right-2 h-5 w-5 text-primary" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-muted">
+                <p className="text-sm text-muted-foreground">
+                  💡 Theme changes apply immediately across the entire application.
+                  Your selection is saved automatically.
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* LLM TAB (Placeholder) */}
-        <TabsContent value="llm" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-green-400" />
-                LLM Provider Configuration
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-slate-400">LLM configuration coming soon...</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ADVANCED TAB (Placeholder) */}
-        <TabsContent value="advanced" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-green-400" />
-                Advanced Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="p-4 bg-slate-900 rounded-lg border border-slate-700 space-y-2 text-sm">
-                <div>
-                  <span className="text-slate-400">API Base URL:</span>{' '}
-                  <span className="text-blue-400">{API_BASE_URL}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Application Mode:</span>{' '}
-                  <span className={isDemo ? 'text-yellow-400' : 'text-green-400'}>
-                    {isDemo ? 'DEMO' : 'PRODUCTION'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Theme:</span>{' '}
-                  <span className="text-green-400">
-                    {currentTheme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                  </span>
-                </div>
               </div>
             </CardContent>
           </Card>
