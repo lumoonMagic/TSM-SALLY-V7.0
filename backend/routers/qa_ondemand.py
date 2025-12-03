@@ -1,6 +1,6 @@
 """
-On-Demand Q&A Router with RAG
-Natural language questions with SQL generation and vector search
+On-Demand Q&A Router with LLM-Powered RAG
+Natural language questions with dynamic SQL generation via Gemini 2.5 Flash
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -10,6 +10,10 @@ import asyncpg
 import json
 from datetime import datetime
 import hashlib
+
+# Import the enhanced RAG service
+from backend.services.rag_sql_service import get_rag_service
+from backend.config import get_config
 
 router = APIRouter()
 
@@ -24,21 +28,36 @@ class QARequest(BaseModel):
     mode: str = "production"  # "demo" or "production"
     use_rag: bool = True
     max_results: int = 100
+    filters: Optional[Dict[str, Any]] = None  # Optional filters (study_id, site_id, etc.)
 
 
 class QAResponse(BaseModel):
-    """Response model for Q&A"""
+    """Enhanced response model for Q&A with LLM insights"""
     question: str
-    answer: str
+    answer: str  # Natural language answer
+    
+    # SQL details
     sql_query: Optional[str] = None
     sql_executed: bool = False
     execution_time_ms: int = 0
     result_count: int = 0
+    
+    # LLM-enhanced response
+    text_summary: Optional[str] = None  # Natural language summary
+    insights: List[str] = []  # Key insights from data
+    visualizations: List[Dict[str, Any]] = []  # Recommended charts
+    recommendations: List[str] = []  # Actionable recommendations
+    kpis: List[Dict[str, Any]] = []  # Calculated KPIs
+    
+    # Raw data
     data: List[Dict[str, Any]] = []
+    
+    # Metadata
     rag_context: List[str] = []
     sources: List[str] = []
     confidence_score: float = 0.0
     mode: str
+    llm_enabled: bool = False
 
 
 class QAHistoryResponse(BaseModel):
@@ -68,172 +87,6 @@ async def get_db_connection():
 # HELPER FUNCTIONS
 # ============================================================================
 
-async def generate_sql_from_question(question: str, conn: asyncpg.Connection) -> str:
-    """
-    Generate SQL query from natural language question
-    Uses LLM or simple pattern matching
-    """
-    # TODO: Integrate with LLM (Gemini/OpenAI) for better SQL generation
-    # For now, use pattern matching for common queries
-    
-    question_lower = question.lower()
-    
-    # Pattern 1: "how many..." queries
-    if "how many sites" in question_lower and "low inventory" in question_lower:
-        return "SELECT COUNT(*) as count FROM gold_sites WHERE inventory_status IN ('Low', 'Critical')"
-    
-    if "how many studies" in question_lower:
-        return "SELECT COUNT(*) as count FROM gold_studies WHERE status = 'Active'"
-    
-    # Pattern 2: "which/what..." queries
-    if "which shipments" in question_lower and "delayed" in question_lower:
-        return """
-            SELECT shipment_id, shipment_number, to_site_id, 
-                   estimated_delivery_date, shipment_status, risk_level
-            FROM gold_shipments 
-            WHERE shipment_status = 'Delayed'
-            ORDER BY estimated_delivery_date
-        """
-    
-    if "which sites" in question_lower and ("low" in question_lower or "critical" in question_lower):
-        return """
-            SELECT site_id, site_name, study_id, country, 
-                   inventory_status, last_shipment_date
-            FROM gold_sites 
-            WHERE inventory_status IN ('Low', 'Critical')
-            ORDER BY inventory_status DESC, last_shipment_date
-        """
-    
-    # Pattern 3: "show me..." queries
-    if "show" in question_lower and "inventory" in question_lower:
-        return """
-            SELECT i.site_id, s.site_name, i.product_id, p.product_name,
-                   i.quantity_on_hand, i.quantity_available, i.expiry_date,
-                   i.days_until_expiry
-            FROM gold_inventory i
-            JOIN gold_sites s ON i.site_id = s.site_id
-            JOIN gold_products p ON i.product_id = p.product_id
-            WHERE i.quantity_available < 50
-            ORDER BY i.days_until_expiry
-            LIMIT 20
-        """
-    
-    if "high risk" in question_lower and "shipment" in question_lower:
-        return """
-            SELECT shipment_id, shipment_number, to_site_id, 
-                   risk_level, risk_score, shipment_status,
-                   estimated_delivery_date
-            FROM gold_shipments
-            WHERE risk_level IN ('High', 'Critical')
-            ORDER BY risk_score DESC
-        """
-    
-    # Pattern 4: Enrollment queries
-    if "enrollment" in question_lower:
-        return """
-            SELECT study_id, study_name, target_enrollment, 
-                   current_enrollment, 
-                   ROUND((current_enrollment::float / NULLIF(target_enrollment, 0)) * 100, 2) as enrollment_pct
-            FROM gold_studies
-            WHERE status = 'Active'
-            ORDER BY enrollment_pct DESC
-        """
-    
-    # Default: Return a safe query that shows system overview
-    return """
-        SELECT 
-            'Studies' as entity_type,
-            COUNT(*) as count
-        FROM gold_studies
-        UNION ALL
-        SELECT 'Sites', COUNT(*) FROM gold_sites
-        UNION ALL
-        SELECT 'Products', COUNT(*) FROM gold_products
-        UNION ALL
-        SELECT 'Shipments', COUNT(*) FROM gold_shipments
-    """
-
-
-async def execute_sql_query(sql: str, conn: asyncpg.Connection, max_results: int = 100) -> tuple:
-    """Execute SQL query safely and return results"""
-    start_time = datetime.now()
-    
-    try:
-        # Add LIMIT to prevent large result sets
-        if "LIMIT" not in sql.upper():
-            sql = sql.strip().rstrip(';') + f" LIMIT {max_results}"
-        
-        results = await conn.fetch(sql)
-        
-        # Convert to list of dicts
-        data = [dict(row) for row in results]
-        
-        # Convert datetime objects to strings
-        for row in data:
-            for key, value in row.items():
-                if isinstance(value, datetime):
-                    row[key] = value.isoformat()
-        
-        end_time = datetime.now()
-        execution_time = int((end_time - start_time).total_seconds() * 1000)
-        
-        return True, data, execution_time
-        
-    except Exception as e:
-        end_time = datetime.now()
-        execution_time = int((end_time - start_time).total_seconds() * 1000)
-        return False, str(e), execution_time
-
-
-async def get_rag_context(question: str, conn: asyncpg.Connection) -> List[str]:
-    """
-    Get relevant context from vector database for RAG
-    Requires embeddings to be generated first
-    """
-    # TODO: Generate embedding for question using OpenAI/Gemini
-    # TODO: Search similar documents using vector similarity
-    
-    # For now, return relevant table documentation
-    context = []
-    
-    question_lower = question.lower()
-    
-    if "inventory" in question_lower:
-        context.append("gold_inventory table contains site-level stock information")
-    
-    if "shipment" in question_lower:
-        context.append("gold_shipments table tracks all supply deliveries")
-    
-    if "site" in question_lower:
-        context.append("gold_sites table contains clinical trial site information")
-    
-    if "study" in question_lower:
-        context.append("gold_studies table contains clinical trial information")
-    
-    return context
-
-
-def generate_answer_from_data(question: str, data: List[Dict], rag_context: List[str]) -> str:
-    """Generate natural language answer from query results"""
-    if not data:
-        return "No results found for your question."
-    
-    # Count queries
-    if len(data) == 1 and 'count' in data[0]:
-        count = data[0]['count']
-        return f"There are {count} records matching your query."
-    
-    # List queries
-    if len(data) <= 5:
-        # Small result set - provide detailed answer
-        return f"Found {len(data)} results. " + (
-            f"Context: {'; '.join(rag_context)}" if rag_context else ""
-        )
-    else:
-        # Large result set - provide summary
-        return f"Found {len(data)} results. The data includes various records from the database."
-
-
 async def log_qa_query(
     conn: asyncpg.Connection,
     question: str,
@@ -244,23 +97,56 @@ async def log_qa_query(
     answer: str,
     rag_context: List[str],
     confidence: float,
-    mode: str
+    mode: str,
+    llm_enabled: bool = False
 ):
     """Log Q&A query to database"""
     try:
-        query = """
+        # Check if table exists first
+        check_query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'rag_queries'
+            )
+        """
+        table_exists = await conn.fetchval(check_query)
+        
+        if not table_exists:
+            # Create table if it doesn't exist
+            create_query = """
+                CREATE TABLE IF NOT EXISTS rag_queries (
+                    query_id SERIAL PRIMARY KEY,
+                    question TEXT NOT NULL,
+                    sql_generated TEXT,
+                    sql_executed BOOLEAN DEFAULT false,
+                    execution_time_ms INTEGER,
+                    result_count INTEGER,
+                    answer TEXT,
+                    rag_context TEXT[],
+                    confidence_score DECIMAL(3,2),
+                    mode VARCHAR(20),
+                    llm_enabled BOOLEAN DEFAULT false,
+                    helpful_feedback BOOLEAN,
+                    user_comments TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            await conn.execute(create_query)
+        
+        # Insert query log
+        insert_query = """
             INSERT INTO rag_queries 
             (question, sql_generated, sql_executed, execution_time_ms, 
-             result_count, answer, rag_context, confidence_score, mode)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             result_count, answer, rag_context, confidence_score, mode, llm_enabled)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """
         await conn.execute(
-            query,
+            insert_query,
             question, sql, executed, execution_time,
-            result_count, answer, rag_context, confidence, mode
+            result_count, answer, rag_context, confidence, mode, llm_enabled
         )
     except Exception as e:
-        print(f"Warning: Failed to log Q&A query: {e}")
+        print(f"⚠️ Warning: Failed to log Q&A query: {e}")
 
 
 # ============================================================================
@@ -270,70 +156,125 @@ async def log_qa_query(
 @router.post("/ask", response_model=QAResponse)
 async def ask_question(request: QARequest):
     """
-    Ask a natural language question
+    Ask a natural language question with LLM-powered response
     
-    - Generates SQL from question
-    - Optionally uses RAG for context
-    - Executes query and returns results
-    - Generates natural language answer
+    Features:
+    - Dynamic SQL generation for ANY question (via Gemini 2.5 Flash)
+    - LLM-generated insights and recommendations
+    - Visualization recommendations
+    - Natural language summaries
+    - Backward compatible with pattern-based fallback
+    
+    Examples:
+    - "Show me sites with temperature excursions in last 30 days"
+    - "Which studies have enrollment below 50% of target?"
+    - "Find products expiring in next month"
+    - ANY question you can think of!
     """
+    # Get configuration
+    config = get_config()
+    llm_enabled = config.llm.enabled
+    
+    # Get RAG service (now LLM-powered!)
+    rag_service = get_rag_service()
+    
+    # Database connection for logging
     conn = await get_db_connection()
     
     try:
-        # Get RAG context if enabled
-        rag_context = []
-        if request.use_rag:
-            rag_context = await get_rag_context(request.question, conn)
-        
-        # Generate SQL from question
-        sql_query = await generate_sql_from_question(request.question, conn)
-        
-        # Execute SQL
-        success, result, execution_time = await execute_sql_query(
-            sql_query, conn, request.max_results
+        # Step 1: Generate and execute SQL using LLM-powered RAG service
+        query_result = await rag_service.generate_and_execute_sql(
+            question=request.question,
+            mode=request.mode,
+            query_type=None,  # Let LLM figure it out
+            filters=request.filters
         )
         
-        if not success:
+        # Check for errors
+        if "error" in query_result:
             raise HTTPException(
                 status_code=400,
-                detail=f"Query execution failed: {result}"
+                detail=f"Query execution failed: {query_result['error']}"
             )
         
-        data = result
+        # Extract results
+        sql_query = query_result.get("query_used", "")
+        data = query_result.get("rows", [])
+        result_count = query_result.get("row_count", 0)
+        execution_time = 0  # Not tracked in current implementation
         
-        # Generate natural language answer
-        answer = generate_answer_from_data(request.question, data, rag_context)
+        # Step 2: Format response with insights (if LLM enabled and requested)
+        if llm_enabled and config.rag.enable_response_formatting:
+            formatted_response = await rag_service.format_response_with_insights(
+                query_results=query_result,
+                question=request.question
+            )
+            
+            # Extract formatted components
+            text_summary = formatted_response.get("text_summary", "")
+            insights = formatted_response.get("insights", [])
+            visualizations = formatted_response.get("visualizations", [])
+            recommendations = formatted_response.get("recommendations", [])
+            kpis = formatted_response.get("kpis", [])
+            
+            # Use text summary as answer
+            answer = text_summary if text_summary else f"Query returned {result_count} results."
+            confidence = 0.9 if result_count > 0 else 0.5
+            
+        else:
+            # Basic response without LLM formatting
+            text_summary = None
+            insights = []
+            visualizations = []
+            recommendations = []
+            kpis = []
+            answer = f"Query returned {result_count} results."
+            confidence = 0.7 if result_count > 0 else 0.3
         
-        # Calculate confidence (simple heuristic for now)
-        confidence = 0.9 if len(data) > 0 else 0.3
-        
-        # Identify data sources
+        # Step 3: Identify data sources from SQL
         sources = []
-        if "FROM" in sql_query:
-            # Extract table names from SQL
+        if sql_query and "FROM" in sql_query.upper():
             import re
-            tables = re.findall(r'FROM\s+(\w+)', sql_query, re.IGNORECASE)
+            # Extract table names (with gold_ prefix)
+            tables = re.findall(r'FROM\s+(gold_\w+)', sql_query, re.IGNORECASE)
+            tables.extend(re.findall(r'JOIN\s+(gold_\w+)', sql_query, re.IGNORECASE))
             sources = list(set(tables))
         
-        # Log query
+        # Step 4: Get RAG context (currently just indicates data model was used)
+        rag_context = []
+        if request.use_rag and llm_enabled:
+            rag_context = [
+                "Data model metadata used for query understanding",
+                "Business rules applied for accurate results",
+                "Schema context provided to LLM"
+            ]
+        
+        # Step 5: Log query
         await log_qa_query(
             conn, request.question, sql_query, True,
-            execution_time, len(data), answer, rag_context,
-            confidence, request.mode
+            execution_time, result_count, answer, rag_context,
+            confidence, request.mode, llm_enabled
         )
         
+        # Step 6: Return enhanced response
         return QAResponse(
             question=request.question,
             answer=answer,
             sql_query=sql_query,
             sql_executed=True,
             execution_time_ms=execution_time,
-            result_count=len(data),
-            data=data[:50],  # Return max 50 rows in response
+            result_count=result_count,
+            text_summary=text_summary,
+            insights=insights,
+            visualizations=visualizations,
+            recommendations=recommendations,
+            kpis=kpis,
+            data=data[:50],  # Return max 50 rows in response (full data available via export)
             rag_context=rag_context,
             sources=sources,
             confidence_score=confidence,
-            mode=request.mode
+            mode=request.mode,
+            llm_enabled=llm_enabled
         )
         
     except HTTPException:
@@ -346,13 +287,36 @@ async def ask_question(request: QARequest):
 
 @router.get("/history", response_model=QAHistoryResponse)
 async def get_qa_history(limit: int = 20, mode: Optional[str] = None):
-    """Get Q&A query history"""
+    """
+    Get Q&A query history
+    
+    Parameters:
+    - limit: Maximum number of queries to return (default: 20)
+    - mode: Filter by mode ("demo" or "production", optional)
+    """
     conn = await get_db_connection()
     
     try:
+        # Check if table exists
+        check_query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'rag_queries'
+            )
+        """
+        table_exists = await conn.fetchval(check_query)
+        
+        if not table_exists:
+            # Return empty history if table doesn't exist yet
+            return QAHistoryResponse(
+                total_queries=0,
+                queries=[]
+            )
+        
+        # Build query
         query = """
             SELECT query_id, question, answer, sql_generated,
-                   result_count, confidence_score, mode,
+                   result_count, confidence_score, mode, llm_enabled,
                    created_at
             FROM rag_queries
         """
@@ -374,6 +338,7 @@ async def get_qa_history(limit: int = 20, mode: Optional[str] = None):
                 "result_count": row['result_count'],
                 "confidence_score": float(row['confidence_score']) if row['confidence_score'] else 0.0,
                 "mode": row['mode'],
+                "llm_enabled": row.get('llm_enabled', False),
                 "created_at": row['created_at'].isoformat()
             })
         
@@ -390,7 +355,14 @@ async def get_qa_history(limit: int = 20, mode: Optional[str] = None):
 
 @router.post("/feedback")
 async def submit_feedback(query_id: int, helpful: bool, comments: Optional[str] = None):
-    """Submit feedback on Q&A answer quality"""
+    """
+    Submit feedback on Q&A answer quality
+    
+    Parameters:
+    - query_id: ID of the query to provide feedback on
+    - helpful: Whether the answer was helpful (true/false)
+    - comments: Optional text comments
+    """
     conn = await get_db_connection()
     
     try:
@@ -399,14 +371,37 @@ async def submit_feedback(query_id: int, helpful: bool, comments: Optional[str] 
             SET helpful_feedback = $1, user_comments = $2
             WHERE query_id = $3
         """
-        await conn.execute(query, helpful, comments, query_id)
+        result = await conn.execute(query, helpful, comments, query_id)
         
         return {
             "success": True,
-            "message": "Feedback submitted successfully"
+            "message": "Feedback submitted successfully",
+            "query_id": query_id
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Feedback error: {str(e)}")
     finally:
         await conn.close()
+
+
+@router.get("/health")
+async def qa_health():
+    """Health check for Q&A service"""
+    config = get_config()
+    rag_service = get_rag_service()
+    
+    return {
+        "service": "qa_ondemand",
+        "status": "healthy",
+        "llm_enabled": config.llm.enabled,
+        "llm_provider": config.llm.provider if config.llm.enabled else "none",
+        "llm_model": config.llm.model if config.llm.enabled else "none",
+        "rag_features": {
+            "response_formatting": config.rag.enable_response_formatting,
+            "insights": config.rag.enable_insights,
+            "visualizations": config.rag.enable_visualizations,
+            "embeddings": config.rag.enable_embeddings
+        },
+        "timestamp": datetime.now().isoformat()
+    }
