@@ -1,1315 +1,877 @@
+'use client';
+
+/**
+ * Configuration Cockpit Page - PRODUCTION READY
+ * 
+ * Comprehensive system configuration interface with:
+ * - Production/Demo mode toggle
+ * - Theme customization
+ * - Database connection management
+ * - LLM provider configuration
+ * - Vector DB settings
+ * - Schema deployment/download
+ * - Settings persistence
+ * - Real-time connection testing
+ * 
+ * API Endpoints:
+ * - GET /api/v1/config/settings - Get current settings
+ * - POST /api/v1/config/settings - Save settings
+ * - POST /api/v1/config/test-connection - Test database connection
+ * - POST /api/v1/schema/deploy - Deploy default schema
+ * - GET /api/v1/schema/download - Download schema SQL
+ */
+
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { 
-  Settings, 
-  Database, 
-  Brain, 
-  TestTube, 
-  Save,
-  CheckCircle,
+import {
+  Settings,
+  Database,
+  Brain,
+  Palette,
+  Download,
+  Upload,
+  CheckCircle2,
   AlertCircle,
   Loader2,
-  Moon,
-  Sun,
-  HardDrive,
-  Zap,
-  Palette,
-  Upload,
-  Download,
-  Play,
-  FileText,
-  Globe,
-  Monitor
+  Save,
+  RotateCcw,
+  TestTube,
+  Server,
+  Key,
+  Globe
 } from 'lucide-react';
-import { useApp } from '@/contexts/AppContext';
-import { useToast } from '@/hooks/use-toast';
-import { 
-  configureDatabaseApi, 
-  configureLLMApi, 
-  getConfigStatus,
-  testDatabaseConnection,
-  deployDefaultSchema,
-  getDefaultSchema,
-  deployCustomSchema,
-  getCurrentSchema,
-  type DatabaseConfig,
-  type LLMConfig,
-  type ConfigStatus 
-} from '@/lib/configApi';
-import { isProductionMode, getDatabaseMode, getModeInfo } from '@/lib/mode';
 
-// ✅ API Base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
+// ============================================================================
+// Types & Interfaces
+// ============================================================================
 
-interface LLMProvider {
-  name: string;
-  chat_models: string[];
-  embedding_models: string[];
-  embedding_cost: string;
-  native_embeddings: boolean;
-  requires_api_key: string;
+interface ConfigSettings {
+  // System Mode
+  mode: 'demo' | 'production';
+  
+  // Theme
+  theme: 'light' | 'dark' | 'system';
+  primaryColor: string;
+  
+  // Database
+  database: {
+    host: string;
+    port: number;
+    name: string;
+    user: string;
+    password: string;
+    ssl: boolean;
+  };
+  
+  // LLM Provider
+  llm: {
+    enabled: boolean;
+    provider: 'gemini' | 'openai' | 'anthropic';
+    model: string;
+    apiKey: string;
+    temperature: number;
+  };
+  
+  // Vector Database
+  vectorDb: {
+    enabled: boolean;
+    provider: 'pgvector' | 'pinecone' | 'weaviate';
+    host?: string;
+    apiKey?: string;
+  };
+  
+  // Features
+  features: {
+    ragEnabled: boolean;
+    analyticsEnabled: boolean;
+    scenariosEnabled: boolean;
+    exportEnabled: boolean;
+  };
 }
 
 interface ConnectionTestResult {
   success: boolean;
   message: string;
-  details?: any;
-  timestamp?: string;
+  latency?: number;
 }
 
-// 🎨 Theme Configurations
-const THEMES = [
-  {
-    id: 'dark-green',
-    name: 'Dark Green',
-    description: 'Classic dark theme with green accents',
-    preview: 'linear-gradient(135deg, #064e3b 0%, #10b981 100%)',
-    primaryColor: '#10b981',
-    backgroundColor: '#064e3b'
-  },
-  {
-    id: 'blue-white',
-    name: 'Navy Blue & White',
-    description: 'Professional navy blue theme',
-    preview: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+// ============================================================================
+// Main Component
+// ============================================================================
+
+export default function ConfigurationCockpitPage() {
+  // State management
+  const [settings, setSettings] = useState<ConfigSettings>({
+    mode: 'production',
+    theme: 'light',
     primaryColor: '#3b82f6',
-    backgroundColor: '#1e3a8a'
-  },
-  {
-    id: 'black-yellow',
-    name: 'Black & Yellow',
-    description: 'Bold black theme with yellow highlights',
-    preview: 'linear-gradient(135deg, #1f2937 0%, #fbbf24 100%)',
-    primaryColor: '#fbbf24',
-    backgroundColor: '#1f2937'
-  }
-];
+    database: {
+      host: 'localhost',
+      port: 5432,
+      name: 'sally_tsm',
+      user: 'postgres',
+      password: '',
+      ssl: true
+    },
+    llm: {
+      enabled: true,
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      apiKey: '',
+      temperature: 0.7
+    },
+    vectorDb: {
+      enabled: true,
+      provider: 'pgvector'
+    },
+    features: {
+      ragEnabled: true,
+      analyticsEnabled: true,
+      scenariosEnabled: true,
+      exportEnabled: true
+    }
+  });
 
-export function ConfigurationCockpit() {
-  const { config, updateConfig, updateTheme } = useApp();
-  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeSection, setActiveSection] = useState<'general' | 'database' | 'llm' | 'vector' | 'features'>('general');
 
-  // ==================== MODE DETECTION ====================
-  const [modeInfo, setModeInfo] = useState(getModeInfo());
-  const [backendStatus, setBackendStatus] = useState<ConfigStatus | null>(null);
-  const [loadingBackendStatus, setLoadingBackendStatus] = useState(false);
+  // API base URL
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
 
-  // ==================== APPLICATION MODE ====================
-  const [applicationMode, setApplicationMode] = useState<'demo' | 'production'>(getDatabaseMode());
-  const [switchingMode, setSwitchingMode] = useState(false);
-
-  // ==================== LLM SETTINGS ====================
-  const [providers, setProviders] = useState<Record<string, LLMProvider>>({});
-  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState('gemini');
-  const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('');
-  const [llmTestResult, setLlmTestResult] = useState<ConnectionTestResult | null>(null);
-  const [testingLLM, setTestingLLM] = useState(false);
-  const [savingLLM, setSavingLLM] = useState(false);
-
-  // ==================== DATABASE SETTINGS ====================
-  const [databaseType, setDatabaseType] = useState('postgresql');
-  const [dbHost, setDbHost] = useState('');
-  const [dbPort, setDbPort] = useState('5432');
-  const [dbName, setDbName] = useState('');
-  const [dbUser, setDbUser] = useState('');
-  const [dbPassword, setDbPassword] = useState('');
-  const [dbTestResult, setDbTestResult] = useState<ConnectionTestResult | null>(null);
-  const [testingDB, setTestingDB] = useState(false);
-  const [savingDB, setSavingDB] = useState(false);
-
-  // ==================== DATABASE DEPLOYMENT ====================
-  const [deployingSchema, setDeployingSchema] = useState(false);
-  const [schemaFile, setSchemaFile] = useState<File | null>(null);
-  const [schemaText, setSchemaText] = useState('');
-  const [downloadingSchema, setDownloadingSchema] = useState(false);
-  const [viewingSchema, setViewingSchema] = useState(false);
-
-  // ==================== VECTOR STORE SETTINGS ====================
-  const [vectorStoreType, setVectorStoreType] = useState('postgres_pgvector');
-
-  // ==================== THEME SETTINGS ====================
-  const [currentTheme, setCurrentTheme] = useState<'dark-green' | 'blue-white' | 'black-yellow'>(config.theme || 'dark-green');
-
-  // ==================== LOAD INITIAL SETTINGS ====================
+  // ========== Load Settings ==========
   useEffect(() => {
-    console.log('🚀 ConfigurationCockpit PRODUCTION-READY loaded!');
-    console.log('🌐 API_BASE_URL:', API_BASE_URL);
-    console.log('🎨 Current theme:', currentTheme);
-    console.log('🔍 Mode Info:', modeInfo);
-    
-    loadAllSettings();
-    checkBackendStatus();
+    loadSettings();
   }, []);
 
-  // ==================== LOAD SETTINGS FROM LOCALSTORAGE ====================
-  const loadAllSettings = async () => {
+  const loadSettings = async () => {
+    setLoading(true);
     try {
-      // Load LLM providers
-      await loadLLMProviders();
-      
-      // Load saved configurations from localStorage
-      const savedConfig = localStorage.getItem('sally-config');
-      if (savedConfig) {
-        const parsed = JSON.parse(savedConfig);
-        
-        // Load database settings
-        if (parsed.database) {
-          setDatabaseType(parsed.database.type || 'postgresql');
-          setDbHost(parsed.database.host || '');
-          setDbPort(String(parsed.database.port || '5432'));
-          setDbName(parsed.database.database || '');
-          setDbUser(parsed.database.username || '');
-          // Don't load password from localStorage
-        }
-        
-        // Load LLM settings
-        if (parsed.llm) {
-          setSelectedProvider(parsed.llm.provider || 'gemini');
-          setSelectedModel(parsed.llm.model || '');
-          // Don't load API key from localStorage
-        }
-        
-        // Load vector store settings
-        if (parsed.vectorStore) {
-          setVectorStoreType(parsed.vectorStore.type || 'postgres_pgvector');
-        }
-        
-        // Load theme
-        if (parsed.theme) {
-          setCurrentTheme(parsed.theme);
-        }
+      const response = await fetch(`${API_BASE_URL}/api/v1/config/settings`);
+      if (response.ok) {
+        const data = await response.json();
+        setSettings(data);
       }
-    } catch (error) {
-      console.error('❌ Error loading settings:', error);
-    }
-  };
-
-  // ==================== BACKEND STATUS CHECK ====================
-  const checkBackendStatus = async () => {
-    if (!isProductionMode()) {
-      console.log('📍 Demo mode - skipping backend status check');
-      return;
-    }
-
-    setLoadingBackendStatus(true);
-    try {
-      console.log('🔍 Checking backend status...');
-      const status = await getConfigStatus();
-      setBackendStatus(status);
-      console.log('✅ Backend status:', status);
-    } catch (error) {
-      console.error('❌ Backend status check failed:', error);
-      setBackendStatus(null);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
     } finally {
-      setLoadingBackendStatus(false);
+      setLoading(false);
     }
   };
 
-  // ==================== LOAD LLM PROVIDERS ====================
-  const loadLLMProviders = async () => {
+  // ========== Save Settings ==========
+  const saveSettings = async () => {
+    setSaving(true);
+    setSaveSuccess(false);
     try {
-      console.log('📡 Loading LLM providers from:', `${API_BASE_URL}/api/v1/settings/llm-providers`);
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-providers`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load providers: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('✅ Loaded providers:', data);
-      setProviders(data.providers || {});
-      setConfiguredProviders(data.configured || []);
-    } catch (error) {
-      console.error('❌ Error loading LLM providers:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Failed to Load Providers',
-        description: 'Could not load LLM provider list'
-      });
-    }
-  };
-
-  // ==================== TEST LLM CONNECTION ====================
-  const handleTestLLM = async () => {
-    if (!apiKey) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing API Key',
-        description: 'Please enter an API key'
-      });
-      return;
-    }
-
-    setTestingLLM(true);
-    setLlmTestResult(null);
-
-    try {
-      console.log('🧪 Testing LLM connection:', selectedProvider);
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/llm-provider/test`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/config/settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: selectedProvider,
-          api_key: apiKey,
-          model: selectedModel || undefined
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
       });
 
-      const result = await response.json();
-      setLlmTestResult(result);
-
-      if (result.success) {
-        toast({
-          title: '✅ LLM Connection Successful',
-          description: result.message
-        });
+      if (response.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        toast({
-          variant: 'destructive',
-          title: '❌ LLM Connection Failed',
-          description: result.message
-        });
+        throw new Error('Failed to save settings');
       }
-    } catch (error) {
-      console.error('❌ LLM test error:', error);
-      setLlmTestResult({
+    } catch (err) {
+      console.error('Save error:', err);
+      alert('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ========== Test Database Connection ==========
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const startTime = Date.now();
+      const response = await fetch(`${API_BASE_URL}/api/v1/config/test-connection`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings.database),
+      });
+
+      const latency = Date.now() - startTime;
+      const data = await response.json();
+
+      setTestResult({
+        success: response.ok,
+        message: data.message || (response.ok ? 'Connection successful' : 'Connection failed'),
+        latency: response.ok ? latency : undefined
+      });
+    } catch (err: any) {
+      setTestResult({
         success: false,
-        message: error instanceof Error ? error.message : 'Connection test failed'
-      });
-      toast({
-        variant: 'destructive',
-        title: 'Test Failed',
-        description: 'Could not test LLM connection'
+        message: err.message || 'Connection test failed'
       });
     } finally {
-      setTestingLLM(false);
+      setTesting(false);
     }
   };
 
-  // ==================== SAVE LLM SETTINGS ====================
-  const handleSaveLLM = async () => {
-    if (!apiKey) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing API Key',
-        description: 'Please enter an API key'
-      });
+  // ========== Deploy Default Schema ==========
+  const deploySchema = async () => {
+    if (!confirm('This will deploy the default SALLY TSM schema to the database. Continue?')) {
       return;
     }
 
-    setSavingLLM(true);
-
     try {
-      // Save to localStorage
-      const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
-      currentConfig.llm = {
-        provider: selectedProvider,
-        model: selectedModel
-      };
-      localStorage.setItem('sally-config', JSON.stringify(currentConfig));
-
-      // Save to backend if in production mode
-      if (isProductionMode()) {
-        console.log('💾 Saving LLM config to backend...');
-        const llmConfig: LLMConfig = {
-          provider: selectedProvider as any,
-          api_key: apiKey,
-          model: selectedModel || undefined
-        };
-        
-        await configureLLMApi(llmConfig);
-        
-        // Refresh backend status
-        await checkBackendStatus();
-      }
-
-      toast({
-        title: '✅ LLM Settings Saved',
-        description: `${selectedProvider} configuration saved successfully`
+      const response = await fetch(`${API_BASE_URL}/api/v1/schema/deploy`, {
+        method: 'POST',
       });
 
-      // Update app context
-      updateConfig({ llmProvider: selectedProvider });
-    } catch (error) {
-      console.error('❌ LLM save error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Save Failed',
-        description: error instanceof Error ? error.message : 'Could not save LLM settings'
-      });
-    } finally {
-      setSavingLLM(false);
-    }
-  };
-
-  // ==================== TEST DATABASE CONNECTION ====================
-  const handleTestDatabase = async () => {
-    if (!dbHost || !dbName || !dbUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please fill in all required database fields'
-      });
-      return;
-    }
-
-    setTestingDB(true);
-    setDbTestResult(null);
-
-    try {
-      console.log('🧪 Testing database connection');
-      const dbConfig: DatabaseConfig = {
-        type: databaseType as any,
-        host: dbHost,
-        port: parseInt(dbPort),
-        database: dbName,
-        username: dbUser,
-        password: dbPassword
-      };
-
-      const result = await testDatabaseConnection(dbConfig);
-      setDbTestResult(result);
-
-      if (result.success) {
-        toast({
-          title: '✅ Database Connection Successful',
-          description: result.message
-        });
+      if (response.ok) {
+        alert('Schema deployed successfully!');
       } else {
-        toast({
-          variant: 'destructive',
-          title: '❌ Database Connection Failed',
-          description: result.message
-        });
+        throw new Error('Schema deployment failed');
       }
-    } catch (error) {
-      console.error('❌ Database test error:', error);
-      setDbTestResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'Connection test failed'
-      });
-      toast({
-        variant: 'destructive',
-        title: 'Test Failed',
-        description: 'Could not test database connection'
-      });
-    } finally {
-      setTestingDB(false);
+    } catch (err) {
+      console.error('Deployment error:', err);
+      alert('Failed to deploy schema');
     }
   };
 
-  // ==================== SAVE DATABASE SETTINGS ====================
-  const handleSaveDatabase = async () => {
-    if (!dbHost || !dbName || !dbUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please fill in all required database fields'
-      });
-      return;
-    }
-
-    setSavingDB(true);
-
+  // ========== Download Schema ==========
+  const downloadSchema = async () => {
     try {
-      // Save to localStorage
-      const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
-      currentConfig.database = {
-        type: databaseType,
-        host: dbHost,
-        port: parseInt(dbPort),
-        database: dbName,
-        username: dbUser
-      };
-      localStorage.setItem('sally-config', JSON.stringify(currentConfig));
-
-      // Save to backend if in production mode
-      if (isProductionMode()) {
-        console.log('💾 Saving database config to backend...');
-        const dbConfig: DatabaseConfig = {
-          type: databaseType as any,
-          host: dbHost,
-          port: parseInt(dbPort),
-          database: dbName,
-          username: dbUser,
-          password: dbPassword
-        };
-        
-        await configureDatabaseApi(dbConfig);
-        
-        // Refresh backend status
-        await checkBackendStatus();
-      }
-
-      toast({
-        title: '✅ Database Settings Saved',
-        description: `${databaseType} configuration saved successfully`
-      });
-
-      // Update app context
-      updateConfig({ databaseType });
-    } catch (error) {
-      console.error('❌ Database save error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Save Failed',
-        description: error instanceof Error ? error.message : 'Could not save database settings'
-      });
-    } finally {
-      setSavingDB(false);
-    }
-  };
-
-  // ==================== DEPLOY DEFAULT SCHEMA ====================
-  const handleDeployDefaultSchema = async () => {
-    if (!dbHost || !dbName || !dbUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please configure and test database connection first'
-      });
-      return;
-    }
-
-    setDeployingSchema(true);
-
-    try {
-      console.log('🚀 Deploying default schema...');
-      const dbConfig: DatabaseConfig = {
-        type: databaseType as any,
-        host: dbHost,
-        port: parseInt(dbPort),
-        database: dbName,
-        username: dbUser,
-        password: dbPassword
-      };
-
-      const result = await deployDefaultSchema(dbConfig, true);
-
-      if (result.success) {
-        toast({
-          title: '✅ Schema Deployed Successfully',
-          description: result.message || 'Default DDL and sample data loaded'
-        });
+      const response = await fetch(`${API_BASE_URL}/api/v1/schema/download`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'sally_tsm_schema.sql';
+        link.click();
       } else {
-        toast({
-          variant: 'destructive',
-          title: '❌ Schema Deployment Failed',
-          description: result.message
-        });
+        throw new Error('Schema download failed');
       }
-    } catch (error) {
-      console.error('❌ Schema deployment error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Deployment Failed',
-        description: error instanceof Error ? error.message : 'Could not deploy schema'
-      });
-    } finally {
-      setDeployingSchema(false);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Failed to download schema');
     }
   };
 
-  // ==================== DOWNLOAD DEFAULT SCHEMA ====================
-  const handleDownloadSchema = async () => {
-    setDownloadingSchema(true);
-
-    try {
-      console.log('📥 Downloading default schema...');
-      const blob = await getDefaultSchema();
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'sally-tsm-schema.sql';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: '✅ Schema Downloaded',
-        description: 'sally-tsm-schema.sql downloaded successfully'
-      });
-    } catch (error) {
-      console.error('❌ Schema download error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Download Failed',
-        description: 'Could not download schema'
-      });
-    } finally {
-      setDownloadingSchema(false);
+  // ========== Reset to Defaults ==========
+  const resetToDefaults = () => {
+    if (confirm('Reset all settings to defaults? This cannot be undone.')) {
+      loadSettings();
     }
   };
 
-  // ==================== UPLOAD CUSTOM SCHEMA ====================
-  const handleSchemaFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setSchemaFile(file);
-
-    // Read file content
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setSchemaText(content);
-    };
-    reader.readAsText(file);
-
-    toast({
-      title: 'Schema File Loaded',
-      description: `${file.name} loaded successfully`
+  // ========== Update Setting Helper ==========
+  const updateSetting = (path: string[], value: any) => {
+    setSettings(prev => {
+      const newSettings = { ...prev };
+      let current: any = newSettings;
+      for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]];
+      }
+      current[path[path.length - 1]] = value;
+      return newSettings;
     });
   };
 
-  // ==================== DEPLOY CUSTOM SCHEMA ====================
-  const handleDeployCustomSchema = async () => {
-    if (!schemaText) {
-      toast({
-        variant: 'destructive',
-        title: 'No Schema',
-        description: 'Please upload a schema file first'
-      });
-      return;
-    }
+  // ============================================================================
+  // Render
+  // ============================================================================
 
-    if (!dbHost || !dbName || !dbUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please configure and test database connection first'
-      });
-      return;
-    }
-
-    setDeployingSchema(true);
-
-    try {
-      console.log('🚀 Deploying custom schema...');
-      const dbConfig: DatabaseConfig = {
-        type: databaseType as any,
-        host: dbHost,
-        port: parseInt(dbPort),
-        database: dbName,
-        username: dbUser,
-        password: dbPassword
-      };
-
-      const result = await deployCustomSchema(dbConfig, schemaText);
-
-      if (result.success) {
-        toast({
-          title: '✅ Custom Schema Deployed',
-          description: result.message || 'Custom schema deployed successfully'
-        });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: '❌ Deployment Failed',
-          description: result.message
-        });
-      }
-    } catch (error) {
-      console.error('❌ Custom schema deployment error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Deployment Failed',
-        description: error instanceof Error ? error.message : 'Could not deploy custom schema'
-      });
-    } finally {
-      setDeployingSchema(false);
-    }
-  };
-
-  // ==================== VIEW CURRENT SCHEMA ====================
-  const handleViewCurrentSchema = async () => {
-    if (!dbHost || !dbName || !dbUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please configure and test database connection first'
-      });
-      return;
-    }
-
-    setViewingSchema(true);
-
-    try {
-      console.log('👀 Viewing current schema...');
-      const dbConfig: DatabaseConfig = {
-        type: databaseType as any,
-        host: dbHost,
-        port: parseInt(dbPort),
-        database: dbName,
-        username: dbUser,
-        password: dbPassword
-      };
-
-      const result = await getCurrentSchema(dbConfig);
-
-      if (result.success) {
-        setSchemaText(result.schema || 'No schema found');
-        toast({
-          title: '✅ Schema Retrieved',
-          description: 'Current database schema loaded'
-        });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: '❌ Retrieval Failed',
-          description: result.message
-        });
-      }
-    } catch (error) {
-      console.error('❌ Schema retrieval error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Retrieval Failed',
-        description: 'Could not retrieve schema'
-      });
-    } finally {
-      setViewingSchema(false);
-    }
-  };
-
-  // ==================== SWITCH APPLICATION MODE ====================
-  const handleModeSwitch = async (newMode: 'demo' | 'production') => {
-    setSwitchingMode(true);
-
-    try {
-      console.log(`🔄 Switching to ${newMode} mode...`);
-      
-      const response = await fetch(`${API_BASE_URL}/api/v1/settings/mode/switch?mode=${newMode}`, {
-        method: 'POST'
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setApplicationMode(newMode);
-        toast({
-          title: `✅ Switched to ${newMode === 'demo' ? 'Demo' : 'Production'} Mode`,
-          description: result.message
-        });
-        
-        // Refresh backend status
-        await checkBackendStatus();
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Mode Switch Failed',
-          description: result.message
-        });
-      }
-    } catch (error) {
-      console.error('❌ Mode switch error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Switch Failed',
-        description: 'Could not switch mode'
-      });
-    } finally {
-      setSwitchingMode(false);
-    }
-  };
-
-  // ==================== CHANGE THEME ====================
-  const handleThemeChange = (themeId: string) => {
-    const theme = themeId as 'dark-green' | 'blue-white' | 'black-yellow';
-    setCurrentTheme(theme);
-    updateTheme(theme);
-    
-    // Save to localStorage
-    const currentConfig = JSON.parse(localStorage.getItem('sally-config') || '{}');
-    currentConfig.theme = theme;
-    localStorage.setItem('sally-config', JSON.stringify(currentConfig));
-
-    toast({
-      title: '🎨 Theme Changed',
-      description: `Switched to ${THEMES.find(t => t.id === themeId)?.name || theme}`
-    });
-  };
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold flex items-center gap-2">
-            <Settings className="h-8 w-8" />
-            Configuration Cockpit
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            Manage application settings, database connections, and integrations
-          </p>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading configuration...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* ==================== BACKEND STATUS PANEL ==================== */}
-      {isProductionMode() && (
-        <Card className="border-blue-500/50 bg-blue-500/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              Backend Status
-              {loadingBackendStatus && <Loader2 className="h-4 w-4 animate-spin" />}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 gap-4">
-              {/* Database Status */}
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-background">
-                <Database className="h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Database</p>
-                  <p className="text-xs text-muted-foreground">
-                    {backendStatus?.database.connected 
-                      ? `Connected (${backendStatus.database.type})`
-                      : 'Not connected'}
-                  </p>
-                </div>
-                {backendStatus?.database.connected ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-yellow-500" />
-                )}
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+            <Settings className="h-10 w-10 text-blue-500" />
+            Configuration Cockpit
+          </h1>
+          <p className="text-gray-600">Manage system settings, connections, and features</p>
+        </div>
+
+        {/* Save Success Banner */}
+        {saveSuccess && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500" />
+            <span className="text-green-900 font-medium">Settings saved successfully!</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          
+          {/* Left Sidebar: Navigation */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
+                Settings Sections
+              </h2>
+              
+              <div className="space-y-1">
+                <button
+                  onClick={() => setActiveSection('general')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${
+                    activeSection === 'general'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Globe className="h-5 w-5" />
+                  General
+                </button>
+                
+                <button
+                  onClick={() => setActiveSection('database')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${
+                    activeSection === 'database'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Database className="h-5 w-5" />
+                  Database
+                </button>
+                
+                <button
+                  onClick={() => setActiveSection('llm')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${
+                    activeSection === 'llm'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Brain className="h-5 w-5" />
+                  LLM Provider
+                </button>
+                
+                <button
+                  onClick={() => setActiveSection('vector')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${
+                    activeSection === 'vector'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Server className="h-5 w-5" />
+                  Vector DB
+                </button>
+                
+                <button
+                  onClick={() => setActiveSection('features')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${
+                    activeSection === 'features'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Palette className="h-5 w-5" />
+                  Features
+                </button>
               </div>
 
-              {/* LLM Status */}
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-background">
-                <Brain className="h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">LLM Provider</p>
-                  <p className="text-xs text-muted-foreground">
-                    {backendStatus?.llm.configured 
-                      ? `Configured (${backendStatus.llm.provider})`
-                      : 'Not configured'}
-                  </p>
-                </div>
-                {backendStatus?.llm.configured ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-yellow-500" />
-                )}
+              {/* Action Buttons */}
+              <div className="mt-6 pt-6 border-t border-gray-200 space-y-2">
+                <button
+                  onClick={saveSettings}
+                  disabled={saving}
+                  className="w-full bg-blue-500 text-white font-medium py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save All
+                </button>
+                
+                <button
+                  onClick={resetToDefaults}
+                  className="w-full bg-gray-100 text-gray-700 font-medium py-2 rounded-lg hover:bg-gray-200 flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset
+                </button>
               </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between p-3 rounded-lg bg-background">
-              <div className="flex items-center gap-2">
-                <Monitor className="h-4 w-4" />
-                <span className="text-sm">API Endpoint:</span>
-                <code className="text-xs bg-muted px-2 py-1 rounded">{API_BASE_URL}</code>
-              </div>
-              <Button size="sm" variant="outline" onClick={checkBackendStatus}>
-                Refresh Status
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ==================== MODE TOGGLE ==================== */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
-            Application Mode
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{modeInfo.label}</p>
-              <p className="text-sm text-muted-foreground">{modeInfo.database}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm">Demo</span>
-              <Switch
-                checked={applicationMode === 'production'}
-                onCheckedChange={(checked) => handleModeSwitch(checked ? 'production' : 'demo')}
-                disabled={switchingMode}
-              />
-              <span className="text-sm">Production</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ==================== MAIN CONFIGURATION TABS ==================== */}
-      <Tabs defaultValue="llm" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="llm">
-            <Brain className="h-4 w-4 mr-2" />
-            LLM Provider
-          </TabsTrigger>
-          <TabsTrigger value="database">
-            <Database className="h-4 w-4 mr-2" />
-            Database
-          </TabsTrigger>
-          <TabsTrigger value="schema">
-            <FileText className="h-4 w-4 mr-2" />
-            Schema
-          </TabsTrigger>
-          <TabsTrigger value="theme">
-            <Palette className="h-4 w-4 mr-2" />
-            Theme
-          </TabsTrigger>
-        </TabsList>
-
-        {/* ==================== LLM CONFIGURATION TAB ==================== */}
-        <TabsContent value="llm">
-          <Card>
-            <CardHeader>
-              <CardTitle>LLM Provider Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Provider</Label>
-                <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(providers).map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {providers[provider].name}
-                        {configuredProviders.includes(provider) && (
-                          <Badge variant="outline" className="ml-2">Configured</Badge>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {providers[selectedProvider] && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Model</Label>
-                    <Select value={selectedModel} onValueChange={setSelectedModel}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {providers[selectedProvider].chat_models.map((model) => (
-                          <SelectItem key={model} value={model}>{model}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+          {/* Right Content: Settings Panels */}
+          <div className="lg:col-span-3">
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+              
+              {/* General Settings */}
+              {activeSection === 'general' && (
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">General Settings</h2>
+                  
+                  {/* Mode Toggle */}
+                  <div className="mb-8">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      System Mode
+                    </label>
+                    <div className="flex bg-gray-100 rounded-lg p-1 w-fit">
+                      <button
+                        onClick={() => updateSetting(['mode'], 'demo')}
+                        className={`px-6 py-3 rounded-md font-medium transition-all ${
+                          settings.mode === 'demo'
+                            ? 'bg-blue-500 text-white shadow-lg'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Demo Mode
+                      </button>
+                      <button
+                        onClick={() => updateSetting(['mode'], 'production')}
+                        className={`px-6 py-3 rounded-md font-medium transition-all ${
+                          settings.mode === 'production'
+                            ? 'bg-green-500 text-white shadow-lg'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Production Mode
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
+                      {settings.mode === 'demo' 
+                        ? 'Using sample data for demonstrations and testing'
+                        : 'Connected to live database with real operational data'
+                      }
+                    </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>API Key</Label>
-                    <Input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="Enter API key"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleTestLLM}
-                      disabled={testingLLM || !apiKey}
-                      variant="outline"
+                  {/* Theme */}
+                  <div className="mb-8">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Theme
+                    </label>
+                    <select
+                      value={settings.theme}
+                      onChange={(e) => updateSetting(['theme'], e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
-                      {testingLLM ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Testing...
-                        </>
-                      ) : (
-                        <>
-                          <TestTube className="mr-2 h-4 w-4" />
-                          Test Connection
-                        </>
-                      )}
-                    </Button>
-
-                    <Button
-                      onClick={handleSaveLLM}
-                      disabled={savingLLM || !apiKey}
-                    >
-                      {savingLLM ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" />
-                          Save Settings
-                        </>
-                      )}
-                    </Button>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">System</option>
+                    </select>
                   </div>
 
-                  {llmTestResult && (
-                    <div className={`p-3 rounded-lg ${llmTestResult.success ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
-                      <div className="flex items-center gap-2">
-                        {llmTestResult.success ? (
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-5 w-5 text-red-500" />
-                        )}
-                        <span className="text-sm">{llmTestResult.message}</span>
+                  {/* Primary Color */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Primary Color
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={settings.primaryColor}
+                        onChange={(e) => updateSetting(['primaryColor'], e.target.value)}
+                        className="h-12 w-24 rounded-lg border border-gray-300 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-600">{settings.primaryColor}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Database Settings */}
+              {activeSection === 'database' && (
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Database Connection</h2>
+                  
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Host
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.database.host}
+                          onChange={(e) => updateSetting(['database', 'host'], e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Port
+                        </label>
+                        <input
+                          type="number"
+                          value={settings.database.port}
+                          onChange={(e) => updateSetting(['database', 'port'], parseInt(e.target.value))}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* ==================== DATABASE CONFIGURATION TAB ==================== */}
-        <TabsContent value="database">
-          <Card>
-            <CardHeader>
-              <CardTitle>Database Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Database Type</Label>
-                <Select value={databaseType} onValueChange={setDatabaseType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sqlite">SQLite</SelectItem>
-                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
-                    <SelectItem value="mongodb">MongoDB</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {databaseType !== 'sqlite' && (
-                <>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Host</Label>
-                      <Input
-                        value={dbHost}
-                        onChange={(e) => setDbHost(e.target.value)}
-                        placeholder="localhost or postgres.railway.internal"
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Database Name
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.database.name}
+                        onChange={(e) => updateSetting(['database', 'name'], e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Port</Label>
-                      <Input
-                        value={dbPort}
-                        onChange={(e) => setDbPort(e.target.value)}
-                        placeholder="5432"
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          User
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.database.user}
+                          onChange={(e) => updateSetting(['database', 'user'], e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Password
+                        </label>
+                        <input
+                          type="password"
+                          value={settings.database.password}
+                          onChange={(e) => updateSetting(['database', 'password'], e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="••••••••"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settings.database.ssl}
+                        onChange={(e) => updateSetting(['database', 'ssl'], e.target.checked)}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Database Name</Label>
-                    <Input
-                      value={dbName}
-                      onChange={(e) => setDbName(e.target.value)}
-                      placeholder="railway"
-                    />
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Username</Label>
-                      <Input
-                        value={dbUser}
-                        onChange={(e) => setDbUser(e.target.value)}
-                        placeholder="postgres"
-                      />
+                      <label className="text-sm font-medium text-gray-700">
+                        Use SSL Connection
+                      </label>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Password</Label>
-                      <Input
-                        type="password"
-                        value={dbPassword}
-                        onChange={(e) => setDbPassword(e.target.value)}
-                        placeholder="Enter password"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
+                    {/* Test Connection */}
+                    <div className="pt-4 border-t border-gray-200">
+                      <button
+                        onClick={testConnection}
+                        disabled={testing}
+                        className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white font-medium py-3 rounded-lg hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {testing ? (
+                          <>
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                            Testing Connection...
+                          </>
+                        ) : (
+                          <>
+                            <TestTube className="h-5 w-5" />
+                            Test Database Connection
+                          </>
+                        )}
+                      </button>
 
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleTestDatabase}
-                  disabled={testingDB || !dbHost || !dbName || !dbUser}
-                  variant="outline"
-                >
-                  {testingDB ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Testing...
-                    </>
-                  ) : (
-                    <>
-                      <TestTube className="mr-2 h-4 w-4" />
-                      Test Connection
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  onClick={handleSaveDatabase}
-                  disabled={savingDB || !dbHost || !dbName || !dbUser}
-                >
-                  {savingDB ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save Settings
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {dbTestResult && (
-                <div className={`p-3 rounded-lg ${dbTestResult.success ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
-                  <div className="flex items-center gap-2">
-                    {dbTestResult.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-red-500" />
-                    )}
-                    <div className="flex-1">
-                      <span className="text-sm font-medium">{dbTestResult.message}</span>
-                      {dbTestResult.details && (
-                        <pre className="text-xs mt-2 p-2 bg-background rounded overflow-auto">
-                          {JSON.stringify(dbTestResult.details, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ==================== SCHEMA MANAGEMENT TAB ==================== */}
-        <TabsContent value="schema">
-          <Card>
-            <CardHeader>
-              <CardTitle>Database Schema Management</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Default Schema Section */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold">Default Schema</h3>
-                <p className="text-sm text-muted-foreground">
-                  Deploy the default Sally TSM database schema with sample data
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleDeployDefaultSchema}
-                    disabled={deployingSchema}
-                  >
-                    {deployingSchema ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Deploying...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Deploy Default Schema
-                      </>
-                    )}
-                  </Button>
-
-                  <Button
-                    onClick={handleDownloadSchema}
-                    disabled={downloadingSchema}
-                    variant="outline"
-                  >
-                    {downloadingSchema ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Downloading...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="mr-2 h-4 w-4" />
-                        Download Schema SQL
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="border-t pt-6">
-                {/* Custom Schema Section */}
-                <div className="space-y-3">
-                  <h3 className="text-lg font-semibold">Custom Schema</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Upload and deploy your own database schema
-                  </p>
-
-                  <div className="space-y-2">
-                    <Label>Upload Schema File (.sql)</Label>
-                    <Input
-                      type="file"
-                      accept=".sql"
-                      onChange={handleSchemaFileUpload}
-                    />
-                    {schemaFile && (
-                      <p className="text-sm text-green-600">
-                        ✅ {schemaFile.name} loaded
-                      </p>
-                    )}
-                  </div>
-
-                  {schemaText && (
-                    <div className="space-y-2">
-                      <Label>Schema Preview</Label>
-                      <Textarea
-                        value={schemaText}
-                        onChange={(e) => setSchemaText(e.target.value)}
-                        rows={10}
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleDeployCustomSchema}
-                      disabled={deployingSchema || !schemaText}
-                    >
-                      {deployingSchema ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Deploying...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Deploy Custom Schema
-                        </>
-                      )}
-                    </Button>
-
-                    <Button
-                      onClick={handleViewCurrentSchema}
-                      disabled={viewingSchema}
-                      variant="outline"
-                    >
-                      {viewingSchema ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Loading...
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="mr-2 h-4 w-4" />
-                          View Current Schema
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ==================== THEME SETTINGS TAB ==================== */}
-        <TabsContent value="theme">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="h-5 w-5" />
-                Theme Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Select Theme</Label>
-                <Select value={currentTheme} onValueChange={handleThemeChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {THEMES.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{ background: theme.preview }}
-                          />
+                      {testResult && (
+                        <div className={`mt-4 p-4 rounded-lg flex items-start gap-3 ${
+                          testResult.success
+                            ? 'bg-green-50 border border-green-200'
+                            : 'bg-red-50 border border-red-200'
+                        }`}>
+                          {testResult.success ? (
+                            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
+                          )}
                           <div>
-                            <p className="font-medium">{theme.name}</p>
-                            <p className="text-xs text-muted-foreground">{theme.description}</p>
+                            <p className={`font-medium ${
+                              testResult.success ? 'text-green-900' : 'text-red-900'
+                            }`}>
+                              {testResult.message}
+                            </p>
+                            {testResult.latency && (
+                              <p className="text-sm text-green-700 mt-1">
+                                Latency: {testResult.latency}ms
+                              </p>
+                            )}
                           </div>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Theme Preview */}
-              <div className="space-y-2">
-                <Label>Preview</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {THEMES.map((theme) => (
-                    <button
-                      key={theme.id}
-                      onClick={() => handleThemeChange(theme.id)}
-                      className={`relative p-4 rounded-lg border-2 transition-all ${
-                        currentTheme === theme.id
-                          ? 'border-primary'
-                          : 'border-border hover:border-primary/50'
-                      }`}
-                    >
-                      <div
-                        className="w-full h-24 rounded-lg mb-2"
-                        style={{ background: theme.preview }}
-                      />
-                      <p className="text-sm font-medium">{theme.name}</p>
-                      {currentTheme === theme.id && (
-                        <CheckCircle className="absolute top-2 right-2 h-5 w-5 text-primary" />
                       )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                    </div>
 
-              <div className="p-4 rounded-lg bg-muted">
-                <p className="text-sm text-muted-foreground">
-                  💡 Theme changes apply immediately across the entire application.
-                  Your selection is saved automatically.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                    {/* Schema Management */}
+                    <div className="pt-4 border-t border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-4">Schema Management</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={deploySchema}
+                          className="px-4 py-3 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center justify-center gap-2 font-medium"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Deploy Schema
+                        </button>
+                        <button
+                          onClick={downloadSchema}
+                          className="px-4 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center justify-center gap-2 font-medium"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download Schema
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* LLM Settings */}
+              {activeSection === 'llm' && (
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">LLM Provider Configuration</h2>
+                  
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settings.llm.enabled}
+                        onChange={(e) => updateSetting(['llm', 'enabled'], e.target.checked)}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <label className="text-sm font-medium text-gray-700">
+                        Enable LLM Integration
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Provider
+                      </label>
+                      <select
+                        value={settings.llm.provider}
+                        onChange={(e) => updateSetting(['llm', 'provider'], e.target.value)}
+                        disabled={!settings.llm.enabled}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic Claude</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Model
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.llm.model}
+                        onChange={(e) => updateSetting(['llm', 'model'], e.target.value)}
+                        disabled={!settings.llm.enabled}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        placeholder="e.g., gemini-2.5-flash"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        API Key
+                      </label>
+                      <input
+                        type="password"
+                        value={settings.llm.apiKey}
+                        onChange={(e) => updateSetting(['llm', 'apiKey'], e.target.value)}
+                        disabled={!settings.llm.enabled}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        placeholder="••••••••••••••••••••"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Temperature: {settings.llm.temperature}
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={settings.llm.temperature}
+                        onChange={(e) => updateSetting(['llm', 'temperature'], parseFloat(e.target.value))}
+                        disabled={!settings.llm.enabled}
+                        className="w-full disabled:opacity-50"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>More Focused</span>
+                        <span>More Creative</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Vector DB Settings */}
+              {activeSection === 'vector' && (
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Vector Database Configuration</h2>
+                  
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settings.vectorDb.enabled}
+                        onChange={(e) => updateSetting(['vectorDb', 'enabled'], e.target.checked)}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <label className="text-sm font-medium text-gray-700">
+                        Enable Vector Database (for RAG)
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Provider
+                      </label>
+                      <select
+                        value={settings.vectorDb.provider}
+                        onChange={(e) => updateSetting(['vectorDb', 'provider'], e.target.value)}
+                        disabled={!settings.vectorDb.enabled}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        <option value="pgvector">pgvector (PostgreSQL Extension)</option>
+                        <option value="pinecone">Pinecone</option>
+                        <option value="weaviate">Weaviate</option>
+                      </select>
+                    </div>
+
+                    {settings.vectorDb.provider !== 'pgvector' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Host/Endpoint
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.vectorDb.host || ''}
+                            onChange={(e) => updateSetting(['vectorDb', 'host'], e.target.value)}
+                            disabled={!settings.vectorDb.enabled}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            API Key
+                          </label>
+                          <input
+                            type="password"
+                            value={settings.vectorDb.apiKey || ''}
+                            onChange={(e) => updateSetting(['vectorDb', 'apiKey'], e.target.value)}
+                            disabled={!settings.vectorDb.enabled}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                            placeholder="••••••••••••••••••••"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Features Settings */}
+              {activeSection === 'features' && (
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Feature Toggles</h2>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">RAG (Retrieval-Augmented Generation)</h3>
+                        <p className="text-sm text-gray-600 mt-1">Enhanced Q&A with context retrieval</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.features.ragEnabled}
+                          onChange={(e) => updateSetting(['features', 'ragEnabled'], e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Analytics</h3>
+                        <p className="text-sm text-gray-600 mt-1">Advanced analytics and forecasting</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.features.analyticsEnabled}
+                          onChange={(e) => updateSetting(['features', 'analyticsEnabled'], e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Clinical Scenarios</h3>
+                        <p className="text-sm text-gray-600 mt-1">12+ pre-built clinical trial scenarios</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.features.scenariosEnabled}
+                          onChange={(e) => updateSetting(['features', 'scenariosEnabled'], e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Import/Export</h3>
+                        <p className="text-sm text-gray-600 mt-1">Data import and export capabilities</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.features.exportEnabled}
+                          onChange={(e) => updateSetting(['features', 'exportEnabled'], e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
