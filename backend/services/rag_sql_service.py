@@ -64,7 +64,7 @@ class RAGSQLService:
         CORE TABLES (All prefixed with gold_)
         ═══════════════════════════════════════════════════════════════
         
-        1. gold_global_studies - Clinical trial studies
+        1. gold_studies - Clinical trial studies
            Primary Key: study_id
            Columns:
            - study_id: VARCHAR(50) - Unique study identifier
@@ -79,9 +79,9 @@ class RAGSQLService:
            - therapeutic_area: VARCHAR(100) - Disease area
            - sponsor: VARCHAR(255) - Sponsoring organization
         
-        2. gold_clinical_sites - Clinical trial sites
+        2. gold_sites - Clinical trial sites
            Primary Key: site_id
-           Foreign Keys: study_id → gold_global_studies.study_id
+           Foreign Keys: study_id → gold_studies.study_id
            Columns:
            - site_id: VARCHAR(50) - Unique site identifier
            - site_name: VARCHAR(255) - Site name
@@ -101,8 +101,8 @@ class RAGSQLService:
         3. gold_subjects - Study participants/patients
            Primary Key: subject_id
            Foreign Keys: 
-           - study_id → gold_global_studies.study_id
-           - site_id → gold_clinical_sites.site_id
+           - study_id → gold_studies.study_id
+           - site_id → gold_sites.site_id
            Columns:
            - subject_id: VARCHAR(50) - Unique subject identifier
            - study_id: VARCHAR(50) - Associated study
@@ -116,7 +116,7 @@ class RAGSQLService:
            - withdrawal_date: DATE - If withdrawn
            - withdrawal_reason: TEXT - Reason for withdrawal
         
-        4. gold_clinical_products - Clinical trial products/drugs
+        4. gold_products - Clinical trial products/drugs
            Primary Key: product_id
            Columns:
            - product_id: VARCHAR(50) - Unique product identifier
@@ -134,9 +134,9 @@ class RAGSQLService:
         5. gold_inventory - Site inventory levels
            Primary Key: inventory_id
            Foreign Keys:
-           - site_id → gold_clinical_sites.site_id
-           - product_id → gold_clinical_products.product_id
-           - study_id → gold_global_studies.study_id
+           - site_id → gold_sites.site_id
+           - product_id → gold_products.product_id
+           - study_id → gold_studies.study_id
            Columns:
            - inventory_id: VARCHAR(50) - Unique inventory record
            - site_id: VARCHAR(50) - Site location
@@ -159,10 +159,10 @@ class RAGSQLService:
         6. gold_shipments - Product shipments
            Primary Key: shipment_id
            Foreign Keys:
-           - study_id → gold_global_studies.study_id
-           - product_id → gold_clinical_products.product_id
+           - study_id → gold_studies.study_id
+           - product_id → gold_products.product_id
            - from_depot_id → gold_regional_depots.depot_id
-           - to_site_id → gold_clinical_sites.site_id
+           - to_site_id → gold_sites.site_id
            Columns:
            - shipment_id: VARCHAR(50) - Unique shipment identifier
            - shipment_number: VARCHAR(100) - Tracking number
@@ -214,9 +214,9 @@ class RAGSQLService:
         9. gold_quality_events - Quality/safety incidents
            Primary Key: event_id
            Foreign Keys:
-           - study_id → gold_global_studies.study_id
-           - site_id → gold_clinical_sites.site_id
-           - product_id → gold_clinical_products.product_id
+           - study_id → gold_studies.study_id
+           - site_id → gold_sites.site_id
+           - product_id → gold_products.product_id
            - shipment_id → gold_shipments.shipment_id
            Columns:
            - event_id: VARCHAR(50) - Unique event identifier
@@ -270,14 +270,14 @@ class RAGSQLService:
         ═══════════════════════════════════════════════════════════════
         
         Study Overview:
-        - JOIN gold_global_studies with gold_clinical_sites and gold_subjects
+        - JOIN gold_studies with gold_sites and gold_subjects
         
         Inventory Analysis:
-        - JOIN gold_inventory with gold_clinical_sites and gold_clinical_products
+        - JOIN gold_inventory with gold_sites and gold_products
         - Check quantity_available, days_until_expiry, temperature_status
         
         Shipment Tracking:
-        - JOIN gold_shipments with gold_clinical_sites and gold_regional_depots
+        - JOIN gold_shipments with gold_sites and gold_regional_depots
         - Check shipment_status, delivery_delay_days, temperature_excursion_detected
         
         Quality Events:
@@ -285,7 +285,7 @@ class RAGSQLService:
         - Filter by severity, event_type, resolution_status
         
         Subject Enrollment:
-        - JOIN gold_subjects with gold_clinical_sites and gold_global_studies
+        - JOIN gold_subjects with gold_sites and gold_studies
         - Count by status, site, treatment_arm
         
         Temperature Monitoring:
@@ -305,7 +305,7 @@ class RAGSQLService:
             "entities": [
                 {
                     "name": "Study",
-                    "table": "gold_global_studies",
+                    "table": "gold_studies",
                     "description": "Clinical trial study with phases, enrollment targets, and therapeutic areas",
                     "key_fields": ["study_id", "study_name", "study_phase", "status"],
                     "common_queries": [
@@ -317,7 +317,7 @@ class RAGSQLService:
                 },
                 {
                     "name": "Site",
-                    "table": "gold_clinical_sites",
+                    "table": "gold_sites",
                     "description": "Clinical trial sites where subjects are enrolled and products are stored",
                     "key_fields": ["site_id", "site_name", "country", "region", "inventory_status"],
                     "relationships": ["Belongs to Study", "Has Subjects", "Has Inventory", "Receives Shipments"],
@@ -343,7 +343,7 @@ class RAGSQLService:
                 },
                 {
                     "name": "Product",
-                    "table": "gold_clinical_products",
+                    "table": "gold_products",
                     "description": "Clinical trial products including drugs and placebos",
                     "key_fields": ["product_id", "product_name", "product_type", "requires_cold_chain"],
                     "common_queries": [
@@ -511,8 +511,15 @@ USER QUESTION:
 {question}
 {filter_context}
 
+CRITICAL SQL SECURITY CONSTRAINTS:
+⚠️ ONLY generate SELECT statements
+⚠️ NEVER use UPDATE, INSERT, DELETE, DROP, ALTER, TRUNCATE, CREATE
+⚠️ Use ONLY exact table names from schema: gold_sites, gold_products, gold_studies, gold_subjects, gold_inventory, gold_shipments, gold_quality_events, gold_temperature_logs, gold_depots, gold_vendors
+⚠️ Always include LIMIT clause (maximum 100 rows)
+⚠️ No nested queries that modify data
+
 INSTRUCTIONS:
-1. Generate a valid PostgreSQL query to answer the user's question
+1. Generate a valid PostgreSQL SELECT query to answer the user's question
 2. Use ONLY the tables and columns defined in the schema (all tables have gold_ prefix)
 3. Apply the filters provided (if any) in the WHERE clause
 4. Use appropriate JOINs to retrieve related data
@@ -576,8 +583,8 @@ Do not include ```sql or ``` markers.
                     s.status,
                     COUNT(DISTINCT cs.site_id) as total_sites,
                     COUNT(DISTINCT subj.subject_id) as total_subjects
-                FROM gold_global_studies s
-                LEFT JOIN gold_clinical_sites cs ON s.study_id = cs.study_id
+                FROM gold_studies s
+                LEFT JOIN gold_sites cs ON s.study_id = cs.study_id
                 LEFT JOIN gold_subjects subj ON s.study_id = subj.study_id
                 WHERE {where_clause}
                 GROUP BY s.study_id, s.study_name, s.study_phase, s.status
@@ -593,7 +600,7 @@ Do not include ```sql or ``` markers.
                 cs.country,
                 cs.status,
                 COUNT(i.inventory_id) as inventory_items
-            FROM gold_clinical_sites cs
+            FROM gold_sites cs
             LEFT JOIN gold_inventory i ON cs.site_id = i.site_id
             WHERE {where_clause}
             GROUP BY cs.site_id, cs.site_name, cs.country, cs.status
