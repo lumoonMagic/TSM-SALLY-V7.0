@@ -113,7 +113,7 @@ export default function EveningSummary({ mode: propMode }: EveningSummaryProps =
     queryKey: ['evening-summary', currentMode],
     queryFn: async () => {
       const response = await axios.get(
-        `${API_BASE_URL}/api/v1/briefs/evening?mode=${currentMode}`
+        `${API_BASE_URL}/api/v1/evening-summary?mode=${currentMode}``
       )
       return response.data
     },
