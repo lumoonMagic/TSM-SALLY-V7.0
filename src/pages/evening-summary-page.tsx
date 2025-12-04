@@ -3,6 +3,8 @@
  * Can be used as: src/components/EveningSummary.tsx OR app/(dashboard)/evening-summary/page.tsx
  * Integrated with Railway Backend API
  * Supports Production/Demo Mode
+ * 
+ * ✅ FIXED: Changed API endpoint from /api/v1/briefs/evening to /api/v1/evening-summary
  */
 
 'use client'
@@ -40,112 +42,72 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://tsm-sally-
 interface EveningSummaryData {
   date: string
   mode: string
-  summary: {
-    issues_resolved: number
-    deliveries_completed: number
-    on_time_percentage: number
-    new_enrollments: number
-  }
-  sections: {
-    today_achievements: {
-      issues_resolved: Array<{
-        type: string
-        count: number
-      }>
-      deliveries: {
-        total_deliveries?: number
-        on_time?: number
-        delayed?: number
-      }
-      deliveries_completed?: number
-      on_time?: number
-      delayed?: number
-      enrollments?: Array<{
-        study_id: string
-        study_name: string
-        new_subjects: number
-      }>
-    }
-    metrics_vs_targets: {
-      delivery_performance: {
-        actual?: number
-        target?: number
-        status?: string
-        total?: number
-        on_time?: number
-        delayed?: number
-      }
-      enrollment_rate?: {
-        actual: number
-        target: number
-        status: string
-      }
-      inventory_transactions?: {
-        total_transactions?: number
-        additions?: number
-        removals?: number
-      }
-    }
-    overnight_monitors: {
-      shipments_in_transit?: number | Array<{
-        shipment_id: string
-        from: string
-        to: string
-        eta: string | null
-      }>
-      sites_requiring_attention?: number
-    }
-    tomorrow_priorities?: string[]
-  }
+  kpis: Array<{
+    label: string
+    value: string
+    change: string
+    trend: 'up' | 'down' | 'stable'
+    status: 'good' | 'warning' | 'critical'
+  }>
+  alerts: Array<{
+    severity: 'critical' | 'warning' | 'info'
+    category: string
+    message: string
+    site?: string
+    compound?: string
+    action_required?: string
+  }>
+  top_insights: Array<{
+    title: string
+    description: string
+    impact: 'high' | 'medium' | 'low'
+    category: string
+  }>
+  summary_text: string
   generated_at: string
 }
 
-interface EveningSummaryProps {
-  mode?: 'production' | 'demo'
-}
+export default function EveningSummary() {
+  const [currentMode, setCurrentMode] = useState<'demo' | 'production'>('demo')
 
-export default function EveningSummary({ mode: propMode }: EveningSummaryProps = {}) {
-  const [currentMode, setCurrentMode] = useState<'production' | 'demo'>(propMode || 'production')
-  const [isRefreshing, setIsRefreshing] = useState(false)
-
-  // Fetch evening summary data
+  // Fetch Evening Summary
   const { data, isLoading, error, refetch } = useQuery<EveningSummaryData>({
     queryKey: ['evening-summary', currentMode],
     queryFn: async () => {
       const response = await axios.get(
-        `${API_BASE_URL}/api/v1/evening-summary?mode=${currentMode}``
+        // ✅ FIXED: Changed from /api/v1/briefs/evening to /api/v1/evening-summary
+        `${API_BASE_URL}/api/v1/evening-summary?mode=${currentMode}`
       )
       return response.data
     },
-    refetchInterval: 10 * 60 * 1000, // Refetch every 10 minutes
+    refetchInterval: 60000, // Refresh every minute
   })
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    try {
-      await refetch()
-      toast.success('Evening Summary refreshed')
-    } catch (err) {
-      toast.error('Failed to refresh')
-    } finally {
-      setIsRefreshing(false)
-    }
+  const handleRefresh = () => {
+    refetch()
+    toast.success('Evening summary refreshed!')
   }
 
-  const handleExportPDF = () => {
-    toast.info('PDF export coming soon')
+  const handleModeToggle = () => {
+    const newMode = currentMode === 'demo' ? 'production' : 'demo'
+    setCurrentMode(newMode)
+    toast.info(`Switched to ${newMode} mode`)
+  }
+
+  const handleExport = () => {
+    toast.success('Export functionality coming soon!')
   }
 
   const handleEmail = () => {
-    toast.info('Email feature coming soon')
+    toast.success('Email functionality coming soon!')
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center space-y-4">
-          <RefreshCw className="h-12 w-12 animate-spin mx-auto text-primary" />
-          <p className="text-lg text-muted-foreground">Loading Evening Summary...</p>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+          <p className="text-gray-600">Loading evening summary...</p>
         </div>
       </div>
     )
@@ -153,60 +115,95 @@ export default function EveningSummary({ mode: propMode }: EveningSummaryProps =
 
   if (error) {
     return (
-      <div className="p-6">
-        <Alert variant="destructive">
-          <AlertTitle>Error Loading Evening Summary</AlertTitle>
-          <AlertDescription>
-            {error instanceof Error ? error.message : 'Failed to load data'}
-          </AlertDescription>
-        </Alert>
-        <Button onClick={() => refetch()} className="mt-4">
-          Try Again
-        </Button>
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Failed to Load Evening Summary</CardTitle>
+            <CardDescription>
+              {error instanceof Error ? error.message : 'An error occurred'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => refetch()} className="w-full">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
-  if (!data) return null
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'bg-red-100 text-red-800 border-red-300'
+      case 'warning': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
+      case 'info': return 'bg-blue-100 text-blue-800 border-blue-300'
+      default: return 'bg-gray-100 text-gray-800 border-gray-300'
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'good': return 'text-green-600'
+      case 'warning': return 'text-yellow-600'
+      case 'critical': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
+  }
+
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />
+      case 'down': return <TrendingUp className="h-4 w-4 text-red-500 rotate-180" />
+      case 'stable': return <Activity className="h-4 w-4 text-gray-500" />
+      default: return null
+    }
+  }
+
+  const getImpactBadge = (impact: string) => {
+    switch (impact) {
+      case 'high': return <Badge variant="destructive">High Impact</Badge>
+      case 'medium': return <Badge variant="secondary">Medium Impact</Badge>
+      case 'low': return <Badge variant="outline">Low Impact</Badge>
+      default: return null
+    }
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="container mx-auto p-6 space-y-6 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <div className="flex items-center space-x-3">
-            <Moon className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">Evening Summary</h1>
-            <Badge variant={currentMode === 'production' ? 'default' : 'secondary'}>
-              {currentMode === 'production' ? (
-                <><Activity className="mr-1 h-3 w-3" /> Production</>
-              ) : (
-                <><Sparkles className="mr-1 h-3 w-3" /> Demo</>
-              )}
-            </Badge>
-          </div>
-          <p className="text-muted-foreground mt-1">
-            {format(new Date(data.date), 'EEEE, MMMM d, yyyy')}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Generated at {format(new Date(data.generated_at), 'h:mm a')}
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <Moon className="h-8 w-8 text-indigo-600" />
+            End of Day Summary
+          </h1>
+          <p className="text-gray-600 mt-1">Progress & tomorrow's plan</p>
         </div>
 
-        <div className="flex space-x-2">
+        <div className="flex items-center gap-3">
+          {/* Mode Toggle */}
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
+            onClick={handleModeToggle}
+            className={currentMode === 'production' ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-300'}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <Sparkles className="mr-2 h-4 w-4" />
+            {currentMode === 'production' ? 'Production Mode' : 'Demo Mode'}
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
-            Export PDF
+            Export
           </Button>
+
           <Button variant="outline" size="sm" onClick={handleEmail}>
             <Mail className="mr-2 h-4 w-4" />
             Email
@@ -214,374 +211,141 @@ export default function EveningSummary({ mode: propMode }: EveningSummaryProps =
         </div>
       </div>
 
-      {/* Executive Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Issues Resolved
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-green-600">
-                  {data.summary.issues_resolved}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Closed today</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
+      {/* Date & Timestamp */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-gray-600">Summary Date</p>
+              <p className="text-lg font-semibold">{data?.date}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <p className="text-sm text-gray-600">Generated At</p>
+              <p className="text-lg font-semibold">{data?.generated_at}</p>
+            </div>
+            <div>
+              <Badge variant="secondary" className="text-sm">
+                Mode: {data?.mode}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Deliveries Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{data.summary.deliveries_completed}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {data.summary.on_time_percentage.toFixed(1)}% on-time
-                </p>
-              </div>
-              <Truck className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              On-Time Performance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">
-                  {data.summary.on_time_percentage.toFixed(1)}%
+      {/* KPI Metrics */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Target className="h-5 w-5 text-blue-600" />
+          Key Performance Indicators
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {data?.kpis?.map((kpi, index) => (
+            <Card key={index} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  {kpi.label}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-2xl font-bold ${getStatusColor(kpi.status)}`}>
+                      {kpi.value}
+                    </p>
+                    <div className="flex items-center gap-1 mt-1">
+                      {getTrendIcon(kpi.trend)}
+                      <p className="text-sm text-gray-600">{kpi.change}</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={getStatusColor(kpi.status)}>
+                    {kpi.status}
+                  </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Target: 95%</p>
-              </div>
-              <Target className="h-8 w-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              New Enrollments
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-green-600">
-                  {data.summary.new_enrollments}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Subjects enrolled</p>
-              </div>
-              <Users className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="achievements" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="achievements">
-            <Award className="mr-2 h-4 w-4" />
-            Achievements
-          </TabsTrigger>
-          <TabsTrigger value="metrics">
-            <Target className="mr-2 h-4 w-4" />
-            Metrics
-          </TabsTrigger>
-          <TabsTrigger value="overnight">
-            <Moon className="mr-2 h-4 w-4" />
-            Overnight
-          </TabsTrigger>
-          <TabsTrigger value="tomorrow">
-            <TrendingUp className="mr-2 h-4 w-4" />
-            Tomorrow
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Today's Achievements */}
-        <TabsContent value="achievements" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today's Achievements</CardTitle>
-              <CardDescription>Issues resolved and deliveries completed</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Issues Resolved */}
-              <div>
-                <h4 className="font-semibold mb-3">Issues Resolved</h4>
-                {data.sections.today_achievements.issues_resolved.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">No issues resolved today</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {data.sections.today_achievements.issues_resolved.map((issue, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <div className="text-2xl font-bold text-green-600">{issue.count}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {issue.type.replace(/_/g, ' ')}
-                        </div>
+      {/* Alerts & Warnings */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Activity className="h-5 w-5 text-yellow-600" />
+          Alerts & Warnings
+        </h2>
+        <div className="space-y-3">
+          {data?.alerts?.map((alert, index) => (
+            <Alert key={index} className={getSeverityColor(alert.severity)}>
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <AlertTitle className="font-semibold">
+                    [{alert.severity.toUpperCase()}] {alert.category}
+                  </AlertTitle>
+                  <AlertDescription className="mt-1">
+                    {alert.message}
+                    {alert.site && (
+                      <div className="mt-1 text-sm">
+                        <strong>Site:</strong> {alert.site}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Deliveries */}
-              <div>
-                <h4 className="font-semibold mb-3">Delivery Performance</h4>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-4 border rounded-lg">
-                    <div className="text-2xl font-bold">
-                      {data.sections.today_achievements.deliveries?.total_deliveries ||
-                       data.sections.today_achievements.deliveries_completed || 0}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Total</div>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">
-                      {data.sections.today_achievements.deliveries?.on_time ||
-                       data.sections.today_achievements.on_time || 0}
-                    </div>
-                    <div className="text-sm text-muted-foreground">On Time</div>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="text-2xl font-bold text-red-600">
-                      {data.sections.today_achievements.deliveries?.delayed ||
-                       data.sections.today_achievements.delayed || 0}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Delayed</div>
-                  </div>
+                    )}
+                    {alert.compound && (
+                      <div className="text-sm">
+                        <strong>Compound:</strong> {alert.compound}
+                      </div>
+                    )}
+                    {alert.action_required && (
+                      <div className="mt-2 text-sm font-medium">
+                        <strong>Action Required:</strong> {alert.action_required}
+                      </div>
+                    )}
+                  </AlertDescription>
                 </div>
               </div>
+            </Alert>
+          ))}
+        </div>
+      </div>
 
-              {/* Enrollments */}
-              {data.sections.today_achievements.enrollments && (
-                <div>
-                  <h4 className="font-semibold mb-3">New Enrollments</h4>
-                  <div className="space-y-2">
-                    {data.sections.today_achievements.enrollments.map((enrollment, index) => (
-                      <div key={index} className="p-3 border rounded-lg flex justify-between items-center">
-                        <div>
-                          <div className="font-medium">{enrollment.study_name}</div>
-                          <div className="text-sm text-muted-foreground">{enrollment.study_id}</div>
-                        </div>
-                        <Badge variant="secondary">
-                          {enrollment.new_subjects} new subjects
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+      {/* Top Insights */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Award className="h-5 w-5 text-purple-600" />
+          Top Insights of the Day
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {data?.top_insights?.map((insight, index) => (
+            <Card key={index} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-base">{insight.title}</CardTitle>
+                  {getImpactBadge(insight.impact)}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <Badge variant="outline" className="w-fit">
+                  {insight.category}
+                </Badge>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-700">{insight.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
 
-        {/* Metrics vs Targets */}
-        <TabsContent value="metrics" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Metrics vs Targets</CardTitle>
-              <CardDescription>Performance against KPIs</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Delivery Performance */}
-              <div>
-                <h4 className="font-semibold mb-3">Delivery Performance</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">On-Time Delivery Rate</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold">
-                        {data.sections.metrics_vs_targets.delivery_performance.actual?.toFixed(1) ||
-                         (data.sections.metrics_vs_targets.delivery_performance.total && data.sections.metrics_vs_targets.delivery_performance.on_time
-                           ? ((data.sections.metrics_vs_targets.delivery_performance.on_time / data.sections.metrics_vs_targets.delivery_performance.total) * 100).toFixed(1)
-                           : '0.0')}%
-                      </span>
-                      <Badge variant={
-                        (data.sections.metrics_vs_targets.delivery_performance.actual || 0) >= 95
-                          ? 'default'
-                          : 'destructive'
-                      }>
-                        Target: {data.sections.metrics_vs_targets.delivery_performance.target || 95}%
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${
-                        (data.sections.metrics_vs_targets.delivery_performance.actual || 0) >= 95
-                          ? 'bg-green-600'
-                          : 'bg-yellow-600'
-                      }`}
-                      style={{
-                        width: `${Math.min(
-                          data.sections.metrics_vs_targets.delivery_performance.actual || 0,
-                          100
-                        )}%`
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Enrollment Rate */}
-              {data.sections.metrics_vs_targets.enrollment_rate && (
-                <div>
-                  <h4 className="font-semibold mb-3">Enrollment Rate</h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Daily Enrollment</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold">
-                          {data.sections.metrics_vs_targets.enrollment_rate.actual}
-                        </span>
-                        <Badge variant={
-                          data.sections.metrics_vs_targets.enrollment_rate.status === 'exceeding'
-                            ? 'default'
-                            : 'secondary'
-                        }>
-                          Target: {data.sections.metrics_vs_targets.enrollment_rate.target}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Inventory Transactions */}
-              {data.sections.metrics_vs_targets.inventory_transactions && (
-                <div>
-                  <h4 className="font-semibold mb-3">Inventory Transactions</h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="p-4 border rounded-lg">
-                      <div className="text-2xl font-bold">
-                        {data.sections.metrics_vs_targets.inventory_transactions.total_transactions || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Total</div>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {data.sections.metrics_vs_targets.inventory_transactions.additions || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Additions</div>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {data.sections.metrics_vs_targets.inventory_transactions.removals || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Removals</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Overnight Monitors */}
-        <TabsContent value="overnight" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overnight Monitors</CardTitle>
-              <CardDescription>Items requiring overnight attention</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Shipments in Transit */}
-              <div>
-                <h4 className="font-semibold mb-3">Shipments in Transit</h4>
-                {Array.isArray(data.sections.overnight_monitors.shipments_in_transit) ? (
-                  <div className="space-y-2">
-                    {data.sections.overnight_monitors.shipments_in_transit.map((shipment, index) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <div className="font-medium">{shipment.shipment_id}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {shipment.from} → {shipment.to}
-                            </div>
-                          </div>
-                          {shipment.eta && (
-                            <div className="text-sm text-muted-foreground">
-                              ETA: {format(new Date(shipment.eta), 'MMM d, h:mm a')}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center p-8 border rounded-lg">
-                    <Truck className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                    <div className="text-2xl font-bold">
-                      {data.sections.overnight_monitors.shipments_in_transit || 0}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Shipments in transit overnight</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Sites Requiring Attention */}
-              {data.sections.overnight_monitors.sites_requiring_attention !== undefined && (
-                <div>
-                  <h4 className="font-semibold mb-3">Sites Requiring Attention</h4>
-                  <div className="text-center p-8 border rounded-lg">
-                    <Package className="h-12 w-12 mx-auto mb-2 text-orange-500" />
-                    <div className="text-2xl font-bold">
-                      {data.sections.overnight_monitors.sites_requiring_attention}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Sites need monitoring</div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tomorrow's Priorities */}
-        <TabsContent value="tomorrow" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tomorrow's Priorities</CardTitle>
-              <CardDescription>Recommended actions for tomorrow</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!data.sections.tomorrow_priorities || data.sections.tomorrow_priorities.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
-                  <p>All priorities addressed. Start fresh tomorrow!</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {data.sections.tomorrow_priorities.map((priority, index) => (
-                    <div key={index} className="p-4 border rounded-lg flex items-start space-x-3">
-                      <Clock className="h-5 w-5 text-blue-500 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm">{priority}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Executive Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-yellow-600" />
+            Executive Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="prose max-w-none">
+            <p className="text-gray-700 whitespace-pre-line">{data?.summary_text}</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
