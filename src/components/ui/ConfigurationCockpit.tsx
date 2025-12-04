@@ -98,7 +98,7 @@ interface ConnectionTestResult {
 // Main Component
 // ============================================================================
 
-export default function ConfigurationCockpitPage() {
+export function ConfigurationCockpitPage() {
   // State management
   const [settings, setSettings] = useState<ConfigSettings>({
     mode: 'production',
