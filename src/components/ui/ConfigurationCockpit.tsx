@@ -100,7 +100,7 @@ const THEMES = {
 // Main Component
 // ============================================================================
 
-export default function ConfigurationCockpit() {
+export function ConfigurationCockpitPage() {
   // State management
   const [settings, setSettings] = useState<ConfigSettings>({
     mode: 'production',
