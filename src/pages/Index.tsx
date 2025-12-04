@@ -74,7 +74,7 @@ const Index = () => {
       case 'summary':
         return <EveningSummary />;
       case 'config':
-        return <ConfigurationCockpit />;
+        return <ConfigurationCockpitPage />;
       default:
         return <OnDemandQA />;
     }
