@@ -1,10 +1,7 @@
 /**
- * Evening Summary Component - Complete Implementation
- * Can be used as: src/components/EveningSummary.tsx OR app/(dashboard)/evening-summary/page.tsx
- * Integrated with Railway Backend API
- * Supports Production/Demo Mode
- * 
- * ✅ FIXED: Changed API endpoint from /api/v1/briefs/evening to /api/v1/evening-summary
+ * Evening Summary Page Component
+ * ✅ CORRECT EXPORT: export function EveningSummaryPage()
+ * ✅ FIXED: Calls /api/v1/evening-summary (matches backend)
  */
 
 'use client'
@@ -14,15 +11,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { 
   CheckCircle, 
-  Clock, 
   TrendingUp, 
-  Package, 
-  Truck,
-  Users,
   RefreshCw,
   Download,
   Mail,
@@ -32,12 +24,9 @@ import {
   Target,
   Award
 } from 'lucide-react'
-import { format } from 'date-fns'
-import { toast } from 'sonner'
 import axios from 'axios'
 
-// API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://tsm-sally-v70-production.up.railway.app'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://tsm-sally-v70-production.up.railway.app'
 
 interface EveningSummaryData {
   date: string
@@ -67,40 +56,23 @@ interface EveningSummaryData {
   generated_at: string
 }
 
-export default function EveningSummary() {
+// ✅ CORRECT EXPORT
+export function EveningSummaryPage() {
   const [currentMode, setCurrentMode] = useState<'demo' | 'production'>('demo')
 
-  // Fetch Evening Summary
   const { data, isLoading, error, refetch } = useQuery<EveningSummaryData>({
     queryKey: ['evening-summary', currentMode],
     queryFn: async () => {
+      console.log('Fetching from:', `${API_BASE_URL}/api/v1/evening-summary`)
       const response = await axios.get(
-        // ✅ FIXED: Changed from /api/v1/briefs/evening to /api/v1/evening-summary
         `${API_BASE_URL}/api/v1/evening-summary?mode=${currentMode}`
       )
+      console.log('Response:', response.data)
       return response.data
     },
-    refetchInterval: 60000, // Refresh every minute
+    retry: 2,
+    refetchInterval: 60000,
   })
-
-  const handleRefresh = () => {
-    refetch()
-    toast.success('Evening summary refreshed!')
-  }
-
-  const handleModeToggle = () => {
-    const newMode = currentMode === 'demo' ? 'production' : 'demo'
-    setCurrentMode(newMode)
-    toast.info(`Switched to ${newMode} mode`)
-  }
-
-  const handleExport = () => {
-    toast.success('Export functionality coming soon!')
-  }
-
-  const handleEmail = () => {
-    toast.success('Email functionality coming soon!')
-  }
 
   if (isLoading) {
     return (
@@ -120,10 +92,13 @@ export default function EveningSummary() {
           <CardHeader>
             <CardTitle className="text-red-600">Failed to Load Evening Summary</CardTitle>
             <CardDescription>
-              {error instanceof Error ? error.message : 'An error occurred'}
+              API returned 404: {error instanceof Error ? error.message : 'Unknown error'}
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              Trying to fetch from: {API_BASE_URL}/api/v1/evening-summary
+            </p>
             <Button onClick={() => refetch()} className="w-full">
               <RefreshCw className="mr-2 h-4 w-4" />
               Try Again
@@ -183,35 +158,24 @@ export default function EveningSummary() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Mode Toggle */}
           <Button
             variant="outline"
             size="sm"
-            onClick={handleModeToggle}
+            onClick={() => setCurrentMode(currentMode === 'demo' ? 'production' : 'demo')}
             className={currentMode === 'production' ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-300'}
           >
             <Sparkles className="mr-2 h-4 w-4" />
             {currentMode === 'production' ? 'Production Mode' : 'Demo Mode'}
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleEmail}>
-            <Mail className="mr-2 h-4 w-4" />
-            Email
           </Button>
         </div>
       </div>
 
-      {/* Date & Timestamp */}
+      {/* Date & Info */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex justify-between items-center">
@@ -223,16 +187,12 @@ export default function EveningSummary() {
               <p className="text-sm text-gray-600">Generated At</p>
               <p className="text-lg font-semibold">{data?.generated_at}</p>
             </div>
-            <div>
-              <Badge variant="secondary" className="text-sm">
-                Mode: {data?.mode}
-              </Badge>
-            </div>
+            <Badge variant="secondary">Mode: {data?.mode}</Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* KPI Metrics */}
+      {/* KPIs */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <Target className="h-5 w-5 text-blue-600" />
@@ -267,7 +227,7 @@ export default function EveningSummary() {
         </div>
       </div>
 
-      {/* Alerts & Warnings */}
+      {/* Alerts */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <Activity className="h-5 w-5 text-yellow-600" />
@@ -276,31 +236,19 @@ export default function EveningSummary() {
         <div className="space-y-3">
           {data?.alerts?.map((alert, index) => (
             <Alert key={index} className={getSeverityColor(alert.severity)}>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <AlertTitle className="font-semibold">
-                    [{alert.severity.toUpperCase()}] {alert.category}
-                  </AlertTitle>
-                  <AlertDescription className="mt-1">
-                    {alert.message}
-                    {alert.site && (
-                      <div className="mt-1 text-sm">
-                        <strong>Site:</strong> {alert.site}
-                      </div>
-                    )}
-                    {alert.compound && (
-                      <div className="text-sm">
-                        <strong>Compound:</strong> {alert.compound}
-                      </div>
-                    )}
-                    {alert.action_required && (
-                      <div className="mt-2 text-sm font-medium">
-                        <strong>Action Required:</strong> {alert.action_required}
-                      </div>
-                    )}
-                  </AlertDescription>
-                </div>
-              </div>
+              <AlertTitle className="font-semibold">
+                [{alert.severity.toUpperCase()}] {alert.category}
+              </AlertTitle>
+              <AlertDescription className="mt-1">
+                {alert.message}
+                {alert.site && <div className="mt-1 text-sm"><strong>Site:</strong> {alert.site}</div>}
+                {alert.compound && <div className="text-sm"><strong>Compound:</strong> {alert.compound}</div>}
+                {alert.action_required && (
+                  <div className="mt-2 text-sm font-medium">
+                    <strong>Action Required:</strong> {alert.action_required}
+                  </div>
+                )}
+              </AlertDescription>
             </Alert>
           ))}
         </div>
@@ -310,7 +258,7 @@ export default function EveningSummary() {
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <Award className="h-5 w-5 text-purple-600" />
-          Top Insights of the Day
+          Top Insights
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data?.top_insights?.map((insight, index) => (
@@ -320,9 +268,7 @@ export default function EveningSummary() {
                   <CardTitle className="text-base">{insight.title}</CardTitle>
                   {getImpactBadge(insight.impact)}
                 </div>
-                <Badge variant="outline" className="w-fit">
-                  {insight.category}
-                </Badge>
+                <Badge variant="outline" className="w-fit">{insight.category}</Badge>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-700">{insight.description}</p>
@@ -332,7 +278,7 @@ export default function EveningSummary() {
         </div>
       </div>
 
-      {/* Executive Summary */}
+      {/* Summary */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -341,9 +287,7 @@ export default function EveningSummary() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="prose max-w-none">
-            <p className="text-gray-700 whitespace-pre-line">{data?.summary_text}</p>
-          </div>
+          <p className="text-gray-700 whitespace-pre-line">{data?.summary_text}</p>
         </CardContent>
       </Card>
     </div>
