@@ -414,7 +414,7 @@ async def get_production_evening_summary(db: AsyncSession) -> EveningSummaryResp
 # Endpoints
 # ============================================================================
 
-@router.get("/evening", response_model=EveningSummaryResponse, tags=["Briefs"])
+@router.get("", response_model=EveningSummaryResponse, tags=["Briefs"])
 async def get_evening_summary(
     mode: str = Query("demo", description="Operating mode: 'demo' or 'production'"),
     date: Optional[str] = Query(None, description="Date for summary (YYYY-MM-DD), defaults to today"),
