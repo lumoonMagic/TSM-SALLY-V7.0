@@ -1,43 +1,20 @@
-'use client';
-
-/**
- * Configuration Cockpit Page - PRODUCTION READY
- * 
- * Comprehensive system configuration interface with:
- * - Production/Demo mode toggle
- * - Theme customization
- * - Database connection management
- * - LLM provider configuration
- * - Vector DB settings
- * - Schema deployment/download
- * - Settings persistence
- * - Real-time connection testing
- * 
- * API Endpoints:
- * - GET /api/v1/config/settings - Get current settings
- * - POST /api/v1/config/settings - Save settings
- * - POST /api/v1/config/test-connection - Test database connection
- * - POST /api/v1/schema/deploy - Deploy default schema
- * - GET /api/v1/schema/download - Download schema SQL
- */
-
 import React, { useState, useEffect } from 'react';
 import {
   Settings,
   Database,
   Brain,
+  Server,
   Palette,
-  Download,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
   Save,
   RotateCcw,
   TestTube,
-  Server,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Globe,
   Key,
-  Globe
+  Download,
+  Upload
 } from 'lucide-react';
 
 // ============================================================================
@@ -48,12 +25,12 @@ interface ConfigSettings {
   // System Mode
   mode: 'demo' | 'production';
   
-  // Theme
-  theme: 'light' | 'dark' | 'system';
-  primaryColor: string;
+  // Theme - YOUR CUSTOM THEMES
+  theme: 'black-green' | 'black-yellow' | 'navy-white';
   
   // Database
   database: {
+    type: 'postgresql' | 'mysql' | 'sqlite';
     host: string;
     port: number;
     name: string;
@@ -94,17 +71,42 @@ interface ConnectionTestResult {
   latency?: number;
 }
 
+// Theme configurations
+const THEMES = {
+  'black-green': {
+    name: 'Black & Green',
+    primary: '#10b981',
+    secondary: '#000000',
+    background: '#111827',
+    text: '#ffffff'
+  },
+  'black-yellow': {
+    name: 'Black & Yellow',
+    primary: '#fbbf24',
+    secondary: '#000000',
+    background: '#111827',
+    text: '#ffffff'
+  },
+  'navy-white': {
+    name: 'Navy Blue & White',
+    primary: '#3b82f6',
+    secondary: '#1e3a8a',
+    background: '#f8fafc',
+    text: '#1e293b'
+  }
+};
+
 // ============================================================================
 // Main Component
 // ============================================================================
 
-export function ConfigurationCockpitPage() {
+export default function ConfigurationCockpit() {
   // State management
   const [settings, setSettings] = useState<ConfigSettings>({
     mode: 'production',
-    theme: 'light',
-    primaryColor: '#3b82f6',
+    theme: 'navy-white',
     database: {
+      type: 'postgresql',
       host: 'localhost',
       port: 5432,
       name: 'sally_tsm',
@@ -136,53 +138,92 @@ export function ConfigurationCockpitPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'general' | 'database' | 'llm' | 'vector' | 'features'>('general');
 
   // API base URL
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://tsm-sally-v70-production.up.railway.app';
 
-  // ========== Load Settings ==========
+  // ========== Load Settings from localStorage ==========
   useEffect(() => {
-    loadSettings();
+    const savedSettings = localStorage.getItem('sally_tsm_config');
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        setSettings(parsed);
+        // Apply theme
+        applyTheme(parsed.theme);
+        // Notify parent about mode change
+        notifyModeChange(parsed.mode);
+      } catch (err) {
+        console.error('Failed to parse saved settings:', err);
+      }
+    }
   }, []);
 
-  const loadSettings = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/config/settings`);
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
-      }
-    } catch (err) {
-      console.error('Failed to load settings:', err);
-    } finally {
-      setLoading(false);
+  // ========== Apply Theme ==========
+  const applyTheme = (theme: string) => {
+    const themeConfig = THEMES[theme as keyof typeof THEMES];
+    if (themeConfig) {
+      document.documentElement.style.setProperty('--primary-color', themeConfig.primary);
+      document.documentElement.style.setProperty('--secondary-color', themeConfig.secondary);
+      document.documentElement.style.setProperty('--background-color', themeConfig.background);
+      document.documentElement.style.setProperty('--text-color', themeConfig.text);
     }
+  };
+
+  // ========== Notify Parent Component about Mode Change ==========
+  const notifyModeChange = (mode: 'demo' | 'production') => {
+    // Dispatch custom event to notify parent
+    const event = new CustomEvent('sally-mode-change', { 
+      detail: { mode } 
+    });
+    window.dispatchEvent(event);
+    
+    // Also update localStorage for other components
+    localStorage.setItem('sally_tsm_mode', mode);
   };
 
   // ========== Save Settings ==========
   const saveSettings = async () => {
     setSaving(true);
     setSaveSuccess(false);
+    setSaveError(null);
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/config/settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings),
-      });
+      // Save to localStorage
+      localStorage.setItem('sally_tsm_config', JSON.stringify(settings));
+      localStorage.setItem('sally_tsm_mode', settings.mode);
+      
+      // Apply theme
+      applyTheme(settings.theme);
+      
+      // Notify parent about mode change
+      notifyModeChange(settings.mode);
+      
+      // Try to save to backend (optional - will fail gracefully if endpoint doesn't exist)
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/config/settings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(settings),
+        });
 
-      if (response.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        throw new Error('Failed to save settings');
+        if (!response.ok) {
+          console.warn('Backend save failed, but localStorage save succeeded');
+        }
+      } catch (backendError) {
+        console.warn('Backend not available, settings saved locally only');
       }
-    } catch (err) {
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to save settings');
       console.error('Save error:', err);
-      alert('Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -192,6 +233,7 @@ export function ConfigurationCockpitPage() {
   const testConnection = async () => {
     setTesting(true);
     setTestResult(null);
+    
     try {
       const startTime = Date.now();
       const response = await fetch(`${API_BASE_URL}/api/v1/config/test-connection`, {
@@ -203,13 +245,20 @@ export function ConfigurationCockpitPage() {
       });
 
       const latency = Date.now() - startTime;
-      const data = await response.json();
-
-      setTestResult({
-        success: response.ok,
-        message: data.message || (response.ok ? 'Connection successful' : 'Connection failed'),
-        latency: response.ok ? latency : undefined
-      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTestResult({
+          success: true,
+          message: data.message || 'Connection successful',
+          latency
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: 'Connection failed - check your settings'
+        });
+      }
     } catch (err: any) {
       setTestResult({
         success: false,
@@ -238,7 +287,7 @@ export function ConfigurationCockpitPage() {
       }
     } catch (err) {
       console.error('Deployment error:', err);
-      alert('Failed to deploy schema');
+      alert('Failed to deploy schema. Endpoint may not be available yet.');
     }
   };
 
@@ -258,14 +307,47 @@ export function ConfigurationCockpitPage() {
       }
     } catch (err) {
       console.error('Download error:', err);
-      alert('Failed to download schema');
+      alert('Failed to download schema. Endpoint may not be available yet.');
     }
   };
 
   // ========== Reset to Defaults ==========
   const resetToDefaults = () => {
     if (confirm('Reset all settings to defaults? This cannot be undone.')) {
-      loadSettings();
+      const defaultSettings: ConfigSettings = {
+        mode: 'production',
+        theme: 'navy-white',
+        database: {
+          type: 'postgresql',
+          host: 'localhost',
+          port: 5432,
+          name: 'sally_tsm',
+          user: 'postgres',
+          password: '',
+          ssl: true
+        },
+        llm: {
+          enabled: true,
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          apiKey: '',
+          temperature: 0.7
+        },
+        vectorDb: {
+          enabled: true,
+          provider: 'pgvector'
+        },
+        features: {
+          ragEnabled: true,
+          analyticsEnabled: true,
+          scenariosEnabled: true,
+          exportEnabled: true
+        }
+      };
+      setSettings(defaultSettings);
+      localStorage.setItem('sally_tsm_config', JSON.stringify(defaultSettings));
+      applyTheme(defaultSettings.theme);
+      notifyModeChange(defaultSettings.mode);
     }
   };
 
@@ -286,19 +368,10 @@ export function ConfigurationCockpitPage() {
   // Render
   // ============================================================================
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading configuration...</p>
-        </div>
-      </div>
-    );
-  }
+  const currentTheme = THEMES[settings.theme];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-6" style={{ width: '100%', maxWidth: '100%' }}>
       <div className="max-w-7xl mx-auto">
         
         {/* Header */}
@@ -310,11 +383,18 @@ export function ConfigurationCockpitPage() {
           <p className="text-gray-600">Manage system settings, connections, and features</p>
         </div>
 
-        {/* Save Success Banner */}
+        {/* Save Success/Error Banner */}
         {saveSuccess && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-green-500" />
             <span className="text-green-900 font-medium">Settings saved successfully!</span>
+          </div>
+        )}
+        
+        {saveError && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <span className="text-red-900 font-medium">Error: {saveError}</span>
           </div>
         )}
 
@@ -455,35 +535,43 @@ export function ConfigurationCockpitPage() {
                     </p>
                   </div>
 
-                  {/* Theme */}
+                  {/* Theme - YOUR CUSTOM THEMES */}
                   <div className="mb-8">
                     <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Theme
+                      Application Theme
                     </label>
-                    <select
-                      value={settings.theme}
-                      onChange={(e) => updateSetting(['theme'], e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                      <option value="system">System</option>
-                    </select>
-                  </div>
-
-                  {/* Primary Color */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Primary Color
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={settings.primaryColor}
-                        onChange={(e) => updateSetting(['primaryColor'], e.target.value)}
-                        className="h-12 w-24 rounded-lg border border-gray-300 cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-600">{settings.primaryColor}</span>
+                    <div className="space-y-3">
+                      {Object.entries(THEMES).map(([key, theme]) => (
+                        <button
+                          key={key}
+                          onClick={() => updateSetting(['theme'], key)}
+                          className={`w-full p-4 rounded-lg border-2 transition-all ${
+                            settings.theme === key
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-12 h-12 rounded-lg"
+                                style={{
+                                  background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`
+                                }}
+                              />
+                              <div className="text-left">
+                                <p className="font-medium text-gray-900">{theme.name}</p>
+                                <p className="text-sm text-gray-500">
+                                  Primary: {theme.primary} • Secondary: {theme.secondary}
+                                </p>
+                              </div>
+                            </div>
+                            {settings.theme === key && (
+                              <CheckCircle2 className="h-6 w-6 text-blue-500" />
+                            )}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -495,6 +583,22 @@ export function ConfigurationCockpitPage() {
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Database Connection</h2>
                   
                   <div className="space-y-6">
+                    {/* Database Type Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Database Type
+                      </label>
+                      <select
+                        value={settings.database.type}
+                        onChange={(e) => updateSetting(['database', 'type'], e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="mysql">MySQL</option>
+                        <option value="sqlite">SQLite</option>
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
