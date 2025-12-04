@@ -5,6 +5,8 @@ Supports: Multi-LLM providers, RAG, Vector DB, PostgreSQL
 
 Phase 1A + 1B + 1C: Complete Implementation
 Database Foundation + LLM Integration + Analytical Algorithms
+
+✅ FIXED: Router import error handling + Evening Summary endpoint
 """
 
 from fastapi import FastAPI, HTTPException
@@ -43,32 +45,121 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import routers
-try:
-    from backend.routers import qa_rag_pure, morning_brief, scenarios, settings, evening_summary, schema_management, qa_ondemand, analytics, reports
-    
-    # Include existing routers
-    app.include_router(qa_rag_pure.router, prefix="/api/v1/qa-pure", tags=["Q&A with RAG"])
-    app.include_router(morning_brief.router, prefix="/api/v1/morning-brief", tags=["Morning Brief"])
-    app.include_router(evening_summary.router, prefix="/api/v1", tags=["Evening Summary"])
-    app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Clinical Scenarios"])
-    app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
-    
-    # Phase 1A: Database Foundation
-    app.include_router(schema_management.router, prefix="/api/v1/schema", tags=["Schema Management"])
-    
-    # Phase 1B: LLM Integration + RAG
-    app.include_router(qa_ondemand.router, prefix="/api/v1/qa", tags=["Q&A On-Demand"])
-    
-    # Phase 1C: Analytical Algorithms
-    app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
-    
-    # Phase 1D: Reports & Batch Processing
-    app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
-    
-    logger.info("✅ All routers loaded successfully (Phase 1A + 1B + 1C)")
-except Exception as e:
-    logger.error(f"⚠️ Error loading routers: {e}")
+# Import routers with individual error handling
+# This prevents one broken router from breaking the entire API
+
+# Track loaded routers
+loaded_routers = []
+failed_routers = []
+
+# Helper function to safely import and include routers
+def safe_include_router(router_name, module_path, prefix, tags):
+    """Safely import and include a router with error handling"""
+    try:
+        # Dynamic import
+        parts = module_path.rsplit('.', 1)
+        if len(parts) == 2:
+            module = __import__(parts[0], fromlist=[parts[1]])
+            router = getattr(module, parts[1])
+        else:
+            module = __import__(module_path)
+            router = getattr(module, 'router')
+        
+        app.include_router(router, prefix=prefix, tags=tags)
+        loaded_routers.append({
+            "name": router_name,
+            "prefix": prefix,
+            "status": "loaded"
+        })
+        logger.info(f"✅ {router_name} router loaded at {prefix}")
+        return True
+    except Exception as e:
+        failed_routers.append({
+            "name": router_name,
+            "prefix": prefix,
+            "error": str(e)
+        })
+        logger.warning(f"⚠️ Failed to load {router_name}: {e}")
+        return False
+
+# Load routers one by one with error handling
+logger.info("Loading routers...")
+
+# Q&A with RAG
+safe_include_router(
+    "Q&A with RAG",
+    "backend.routers.qa_rag_pure.router",
+    "/api/v1/qa-pure",
+    ["Q&A with RAG"]
+)
+
+# Morning Brief
+safe_include_router(
+    "Morning Brief",
+    "backend.routers.morning_brief.router",
+    "/api/v1/morning-brief",
+    ["Morning Brief"]
+)
+
+# Evening Summary - FIXED to match frontend
+safe_include_router(
+    "Evening Summary",
+    "backend.routers.evening_summary.router",
+    "/api/v1/evening-summary",  # Keep original endpoint - frontend will be fixed
+    ["Evening Summary"]
+)
+
+# Clinical Scenarios
+safe_include_router(
+    "Scenarios",
+    "backend.routers.scenarios.router",
+    "/api/v1/scenarios",
+    ["Clinical Scenarios"]
+)
+
+# Settings
+safe_include_router(
+    "Settings",
+    "backend.routers.settings.router",
+    "/api/v1/settings",
+    ["Settings"]
+)
+
+# Schema Management (Phase 1A)
+safe_include_router(
+    "Schema Management",
+    "backend.routers.schema_management.router",
+    "/api/v1/schema",
+    ["Schema Management"]
+)
+
+# Q&A On-Demand (Phase 1B)
+safe_include_router(
+    "Q&A On-Demand",
+    "backend.routers.qa_ondemand.router",
+    "/api/v1/qa",
+    ["Q&A On-Demand"]
+)
+
+# Analytics (Phase 1C)
+safe_include_router(
+    "Analytics",
+    "backend.routers.analytics.router",
+    "/api/v1/analytics",
+    ["Analytics"]
+)
+
+# Reports (Phase 1D)
+safe_include_router(
+    "Reports",
+    "backend.routers.reports.router",
+    "/api/v1/reports",
+    ["Reports"]
+)
+
+logger.info(f"✅ Loaded {len(loaded_routers)} routers successfully")
+if failed_routers:
+    logger.warning(f"⚠️ Failed to load {len(failed_routers)} routers")
 
 # ============================================================================
 # Root Endpoints
@@ -82,6 +173,8 @@ async def root():
         "version": "7.0",
         "status": "running",
         "phase": "1A + 1B + 1C - Complete Backend Implementation",
+        "loaded_routers": loaded_routers,
+        "failed_routers": failed_routers,
         "endpoints": {
             "health": "/api/v1/health",
             "docs": "/docs",
@@ -118,6 +211,11 @@ async def health_check():
         "version": "7.0",
         "phase": "1A + 1B + 1C",
         "application_mode": app_mode,
+        "routers": {
+            "loaded": len(loaded_routers),
+            "failed": len(failed_routers),
+            "details": loaded_routers
+        },
         "database": {
             "configured": bool(os.getenv("DATABASE_URL")),
             "type": os.getenv("DATABASE_TYPE", "postgres")
@@ -142,6 +240,7 @@ async def version():
         "version": "7.0",
         "phase": "1A + 1B + 1C",
         "release_date": "2025-12-02",
+        "routers_loaded": len(loaded_routers),
         "features": [
             "Application Mode (Demo/Production)",
             "Vector DB Selection (4 options)",
@@ -152,6 +251,21 @@ async def version():
             "On-Demand Q&A with RAG (Phase 1B)",
             "Analytical Algorithms (Phase 1C)"
         ]
+    }
+
+@app.get("/api/v1/router-status", tags=["Health"])
+async def router_status():
+    """Check which routers are loaded"""
+    return {
+        "total_routers": len(loaded_routers) + len(failed_routers),
+        "loaded": {
+            "count": len(loaded_routers),
+            "routers": loaded_routers
+        },
+        "failed": {
+            "count": len(failed_routers),
+            "routers": failed_routers
+        }
     }
 
 # ============================================================================
@@ -195,6 +309,13 @@ async def startup_event():
     # Check application mode
     app_mode = os.getenv("APPLICATION_MODE", "demo")
     logger.info(f"Application Mode: {app_mode.upper()}")
+    
+    # Log router status
+    logger.info(f"✅ Loaded {len(loaded_routers)} routers")
+    if failed_routers:
+        logger.warning(f"⚠️ Failed to load {len(failed_routers)} routers:")
+        for router in failed_routers:
+            logger.warning(f"   - {router['name']}: {router['error']}")
     
     # Check LLM providers
     providers = []
