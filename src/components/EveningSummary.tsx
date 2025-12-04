@@ -57,7 +57,7 @@ interface EveningSummaryData {
 }
 
 // ✅ CORRECT EXPORT
-export function EveningSummaryPage() {
+export function EveningSummary() {
   const [currentMode, setCurrentMode] = useState<'demo' | 'production'>('demo')
 
   const { data, isLoading, error, refetch } = useQuery<EveningSummaryData>({
