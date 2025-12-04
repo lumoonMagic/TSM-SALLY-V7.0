@@ -1,295 +1,283 @@
-/**
- * Evening Summary Page Component
- * ✅ CORRECT EXPORT: export function EveningSummaryPage()
- * ✅ FIXED: Calls /api/v1/evening-summary (matches backend)
- */
+'use client';
 
-'use client'
-
-import React, { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
-  CheckCircle, 
   TrendingUp, 
+  AlertTriangle, 
+  Clock, 
+  BarChart3,
   RefreshCw,
-  Download,
-  Mail,
-  Moon,
-  Activity,
-  Sparkles,
+  Zap,
   Target,
-  Award
-} from 'lucide-react'
-import axios from 'axios'
+  Calendar
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://tsm-sally-v70-production.up.railway.app'
+// ==================== CONFIGURATION ====================
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://tsm-sally-v70-production.up.railway.app';
 
-interface EveningSummaryData {
-  date: string
-  mode: string
-  kpis: Array<{
-    label: string
-    value: string
-    change: string
-    trend: 'up' | 'down' | 'stable'
-    status: 'good' | 'warning' | 'critical'
-  }>
-  alerts: Array<{
-    severity: 'critical' | 'warning' | 'info'
-    category: string
-    message: string
-    site?: string
-    compound?: string
-    action_required?: string
-  }>
-  top_insights: Array<{
-    title: string
-    description: string
-    impact: 'high' | 'medium' | 'low'
-    category: string
-  }>
-  summary_text: string
-  generated_at: string
+// ==================== TYPES ====================
+interface KPIMetric {
+  name: string;
+  value: string;
+  change: string;
+  trend: 'up' | 'down' | 'neutral';
 }
 
-// ✅ CORRECT EXPORT
-export function EveningSummary() {
-  const [currentMode, setCurrentMode] = useState<'demo' | 'production'>('demo')
+interface Alert {
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  timestamp: string;
+}
 
-  const { data, isLoading, error, refetch } = useQuery<EveningSummaryData>({
-    queryKey: ['evening-summary', currentMode],
-    queryFn: async () => {
-      console.log('Fetching from:', `${API_BASE_URL}/api/v1/evening-summary`)
-      const response = await axios.get(
-        `${API_BASE_URL}/api/v1/evening-summary?mode=${currentMode}`
-      )
-      console.log('Response:', response.data)
-      return response.data
+interface Insight {
+  category: string;
+  title: string;
+  description: string;
+  impact: 'high' | 'medium' | 'low';
+}
+
+interface EveningSummaryData {
+  kpis: KPIMetric[];
+  alerts: Alert[];
+  insights: Insight[];
+  summary: string;
+  generated_at: string;
+}
+
+// ==================== API FUNCTIONS ====================
+const fetchEveningSummary = async (mode: 'production' | 'demo'): Promise<EveningSummaryData> => {
+  // Use relative path for API calls to avoid CORS issues
+  const response = await fetch(`${API_BASE_URL}/api/v1/evening-summary?mode=${mode}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
     },
-    retry: 2,
-    refetchInterval: 60000,
-  })
+  });
 
+  if (!response.ok) {
+    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+  }
+
+  return response.json();
+};
+
+// ==================== COMPONENT ====================
+export function EveningSummary() {
+  const [currentMode, setCurrentMode] = useState<'production' | 'demo'>('demo');
+
+  // React Query for data fetching
+  const { 
+    data: summaryData, 
+    isLoading, 
+    error, 
+    refetch,
+    isRefetching 
+  } = useQuery({
+    queryKey: ['evening-summary', currentMode],
+    queryFn: () => fetchEveningSummary(currentMode),
+    refetchOnWindowFocus: false,
+    retry: 2,
+  });
+
+  // Handle mode toggle
+  const handleModeToggle = () => {
+    const newMode = currentMode === 'production' ? 'demo' : 'production';
+    setCurrentMode(newMode);
+    toast.success(`Switched to ${newMode} mode`);
+  };
+
+  // Handle manual refresh
+  const handleRefresh = () => {
+    refetch();
+    toast.info('Refreshing evening summary...');
+  };
+
+  // Render loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
-          <p className="text-gray-600">Loading evening summary...</p>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center space-y-4">
+            <RefreshCw className="h-12 w-12 animate-spin mx-auto text-primary" />
+            <p className="text-lg font-medium">Loading Evening Summary...</p>
+          </div>
         </div>
       </div>
-    )
+    );
   }
 
+  // Render error state
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-red-600">Failed to Load Evening Summary</CardTitle>
-            <CardDescription>
-              API returned 404: {error instanceof Error ? error.message : 'Unknown error'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600 mb-4">
-              Trying to fetch from: {API_BASE_URL}/api/v1/evening-summary
-            </p>
-            <Button onClick={() => refetch()} className="w-full">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="container mx-auto p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Failed to load evening summary: {error instanceof Error ? error.message : 'Unknown error'}
+          </AlertDescription>
+        </Alert>
+        <div className="mt-4 flex justify-center">
+          <Button onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
       </div>
-    )
-  }
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-300'
-      case 'warning': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'info': return 'bg-blue-100 text-blue-800 border-blue-300'
-      default: return 'bg-gray-100 text-gray-800 border-gray-300'
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'good': return 'text-green-600'
-      case 'warning': return 'text-yellow-600'
-      case 'critical': return 'text-red-600'
-      default: return 'text-gray-600'
-    }
-  }
-
-  const getTrendIcon = (trend: string) => {
-    switch (trend) {
-      case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />
-      case 'down': return <TrendingUp className="h-4 w-4 text-red-500 rotate-180" />
-      case 'stable': return <Activity className="h-4 w-4 text-gray-500" />
-      default: return null
-    }
-  }
-
-  const getImpactBadge = (impact: string) => {
-    switch (impact) {
-      case 'high': return <Badge variant="destructive">High Impact</Badge>
-      case 'medium': return <Badge variant="secondary">Medium Impact</Badge>
-      case 'low': return <Badge variant="outline">Low Impact</Badge>
-      default: return null
-    }
+    );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6 bg-gray-50 min-h-screen">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <Moon className="h-8 w-8 text-indigo-600" />
-            End of Day Summary
-          </h1>
-          <p className="text-gray-600 mt-1">Progress & tomorrow's plan</p>
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight">End of Day Summary</h1>
+          <p className="text-muted-foreground flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            {summaryData?.generated_at && format(new Date(summaryData.generated_at), 'MMMM dd, yyyy - HH:mm')}
+          </p>
         </div>
-
+        
         <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentMode(currentMode === 'demo' ? 'production' : 'demo')}
-            className={currentMode === 'production' ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-300'}
-          >
-            <Sparkles className="mr-2 h-4 w-4" />
+          <Badge variant={currentMode === 'production' ? 'default' : 'secondary'}>
             {currentMode === 'production' ? 'Production Mode' : 'Demo Mode'}
+          </Badge>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleModeToggle}
+          >
+            <Zap className="mr-2 h-4 w-4" />
+            Switch to {currentMode === 'production' ? 'Demo' : 'Production'}
           </Button>
-
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={isRefetching}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
       </div>
 
-      {/* Date & Info */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-gray-600">Summary Date</p>
-              <p className="text-lg font-semibold">{data?.date}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Generated At</p>
-              <p className="text-lg font-semibold">{data?.generated_at}</p>
-            </div>
-            <Badge variant="secondary">Mode: {data?.mode}</Badge>
-          </div>
-        </CardContent>
-      </Card>
+      {/* KPIs Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {summaryData?.kpis.map((kpi, index) => (
+          <Card key={index}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {kpi.name}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end justify-between">
+                <div className="text-2xl font-bold">{kpi.value}</div>
+                <Badge 
+                  variant={kpi.trend === 'up' ? 'default' : kpi.trend === 'down' ? 'destructive' : 'secondary'}
+                  className="flex items-center gap-1"
+                >
+                  <TrendingUp className="h-3 w-3" />
+                  {kpi.change}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-      {/* KPIs */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Target className="h-5 w-5 text-blue-600" />
-          Key Performance Indicators
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data?.kpis?.map((kpi, index) => (
-            <Card key={index} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-600">
-                  {kpi.label}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className={`text-2xl font-bold ${getStatusColor(kpi.status)}`}>
-                      {kpi.value}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {getTrendIcon(kpi.trend)}
-                      <p className="text-sm text-gray-600">{kpi.change}</p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className={getStatusColor(kpi.status)}>
-                    {kpi.status}
+      {/* Tabs Section */}
+      <Tabs defaultValue="alerts" className="w-full">
+        <TabsList>
+          <TabsTrigger value="alerts" className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Alerts ({summaryData?.alerts.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="insights" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Top Insights ({summaryData?.insights.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="summary" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            Executive Summary
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Alerts Tab */}
+        <TabsContent value="alerts" className="space-y-4">
+          {summaryData?.alerts.map((alert, index) => (
+            <Alert 
+              key={index} 
+              variant={alert.severity === 'critical' ? 'destructive' : 'default'}
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <div className="ml-2">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-semibold">{alert.title}</h4>
+                  <Badge variant="outline" className="ml-2">
+                    {alert.severity}
                   </Badge>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Alerts */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Activity className="h-5 w-5 text-yellow-600" />
-          Alerts & Warnings
-        </h2>
-        <div className="space-y-3">
-          {data?.alerts?.map((alert, index) => (
-            <Alert key={index} className={getSeverityColor(alert.severity)}>
-              <AlertTitle className="font-semibold">
-                [{alert.severity.toUpperCase()}] {alert.category}
-              </AlertTitle>
-              <AlertDescription className="mt-1">
-                {alert.message}
-                {alert.site && <div className="mt-1 text-sm"><strong>Site:</strong> {alert.site}</div>}
-                {alert.compound && <div className="text-sm"><strong>Compound:</strong> {alert.compound}</div>}
-                {alert.action_required && (
-                  <div className="mt-2 text-sm font-medium">
-                    <strong>Action Required:</strong> {alert.action_required}
-                  </div>
-                )}
-              </AlertDescription>
+                <AlertDescription>{alert.description}</AlertDescription>
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {format(new Date(alert.timestamp), 'HH:mm')}
+                </p>
+              </div>
             </Alert>
           ))}
-        </div>
-      </div>
+        </TabsContent>
 
-      {/* Top Insights */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Award className="h-5 w-5 text-purple-600" />
-          Top Insights
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {data?.top_insights?.map((insight, index) => (
-            <Card key={index} className="hover:shadow-lg transition-shadow">
+        {/* Insights Tab */}
+        <TabsContent value="insights" className="space-y-4">
+          {summaryData?.insights.map((insight, index) => (
+            <Card key={index}>
               <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-base">{insight.title}</CardTitle>
-                  {getImpactBadge(insight.impact)}
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{insight.title}</CardTitle>
+                  <Badge 
+                    variant={
+                      insight.impact === 'high' ? 'destructive' : 
+                      insight.impact === 'medium' ? 'default' : 
+                      'secondary'
+                    }
+                  >
+                    {insight.impact} impact
+                  </Badge>
                 </div>
                 <Badge variant="outline" className="w-fit">{insight.category}</Badge>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-gray-700">{insight.description}</p>
+                <p className="text-sm text-muted-foreground">{insight.description}</p>
               </CardContent>
             </Card>
           ))}
-        </div>
-      </div>
+        </TabsContent>
 
-      {/* Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-yellow-600" />
-            Executive Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-700 whitespace-pre-line">{data?.summary_text}</p>
-        </CardContent>
-      </Card>
+        {/* Executive Summary Tab */}
+        <TabsContent value="summary">
+          <Card>
+            <CardHeader>
+              <CardTitle>Executive Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {summaryData?.summary}
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
-  )
+  );
 }
