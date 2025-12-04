@@ -11,14 +11,69 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Settings, Database, Palette, Zap, Save, CheckCircle } from 'lucide-react';
-import { useTheme, THEMES } from '@/components/ThemeProvider';
+
+// Theme configuration (standalone - no context needed)
+interface ThemeColors {
+  name: string;
+  primary: string;
+  secondary: string;
+  background: string;
+  foreground: string;
+  accent: string;
+  muted: string;
+  border: string;
+}
+
+const THEMES: Record<string, ThemeColors> = {
+  'default': {
+    name: 'Default',
+    primary: '#3b82f6',
+    secondary: '#64748b',
+    background: '#ffffff',
+    foreground: '#0f172a',
+    accent: '#f59e0b',
+    muted: '#f1f5f9',
+    border: '#e2e8f0'
+  },
+  'black-green': {
+    name: 'Black & Green',
+    primary: '#10b981',
+    secondary: '#059669',
+    background: '#000000',
+    foreground: '#10b981',
+    accent: '#34d399',
+    muted: '#064e3b',
+    border: '#065f46'
+  },
+  'black-yellow': {
+    name: 'Black & Yellow',
+    primary: '#fbbf24',
+    secondary: '#f59e0b',
+    background: '#000000',
+    foreground: '#fbbf24',
+    accent: '#fcd34d',
+    muted: '#78350f',
+    border: '#92400e'
+  },
+  'navy-white': {
+    name: 'Navy Blue & White',
+    primary: '#1e40af',
+    secondary: '#3b82f6',
+    background: '#0f172a',
+    foreground: '#f8fafc',
+    accent: '#60a5fa',
+    muted: '#1e293b',
+    border: '#334155'
+  }
+};
 
 export function ConfigurationCockpitPage() {
   // Mode state
   const [isProductionMode, setIsProductionMode] = useState(false);
   
-  // Theme state
-  const { theme, setTheme, themeColors } = useTheme();
+  // Theme state (local - no context)
+  const [currentTheme, setCurrentTheme] = useState<string>('default');
+  const [themeColors, setThemeColors] = useState<ThemeColors>(THEMES['default']);
   
   // Database state
   const [databaseType, setDatabaseType] = useState('postgresql');
@@ -35,11 +90,36 @@ export function ConfigurationCockpitPage() {
     loadConfiguration();
   }, []);
 
+  // Apply theme when it changes
+  useEffect(() => {
+    const colors = THEMES[currentTheme] || THEMES['default'];
+    setThemeColors(colors);
+    
+    // Apply CSS variables to root
+    const root = document.documentElement;
+    root.style.setProperty('--color-primary', colors.primary);
+    root.style.setProperty('--color-secondary', colors.secondary);
+    root.style.setProperty('--color-background', colors.background);
+    root.style.setProperty('--color-foreground', colors.foreground);
+    root.style.setProperty('--color-accent', colors.accent);
+    root.style.setProperty('--color-muted', colors.muted);
+    root.style.setProperty('--color-border', colors.border);
+
+    // Save to localStorage
+    localStorage.setItem('sally-theme', currentTheme);
+  }, [currentTheme]);
+
   const loadConfiguration = () => {
     try {
       // Load mode
       const savedMode = localStorage.getItem('sally-mode');
       setIsProductionMode(savedMode === 'production');
+
+      // Load theme
+      const savedTheme = localStorage.getItem('sally-theme');
+      if (savedTheme && THEMES[savedTheme]) {
+        setCurrentTheme(savedTheme);
+      }
 
       // Load database config
       const savedDbType = localStorage.getItem('sally-db-type');
@@ -61,6 +141,9 @@ export function ConfigurationCockpitPage() {
       // Save mode
       localStorage.setItem('sally-mode', isProductionMode ? 'production' : 'demo');
 
+      // Save theme
+      localStorage.setItem('sally-theme', currentTheme);
+
       // Save database config
       localStorage.setItem('sally-db-type', databaseType);
       localStorage.setItem('sally-db-config', JSON.stringify(databaseConfig));
@@ -77,7 +160,7 @@ export function ConfigurationCockpitPage() {
   };
 
   const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
+    setCurrentTheme(newTheme);
     toast.success(`Theme changed to ${THEMES[newTheme]?.name || 'Default'}`);
   };
 
@@ -104,7 +187,7 @@ export function ConfigurationCockpitPage() {
               <Settings className="h-8 w-8" style={{ color: themeColors.primary }} />
               Configuration Cockpit
             </h1>
-            <p className="text-muted-foreground mt-1">
+            <p className="mt-1" style={{ color: themeColors.secondary }}>
               Manage system configuration and preferences
             </p>
           </div>
@@ -166,7 +249,7 @@ export function ConfigurationCockpitPage() {
                     <Label style={{ color: themeColors.foreground }}>
                       Production Mode
                     </Label>
-                    <p className="text-sm" style={{ color: themeColors.muted }}>
+                    <p className="text-sm" style={{ color: themeColors.secondary }}>
                       {isProductionMode 
                         ? 'Using live database and real data' 
                         : 'Using demo data for testing'}
@@ -311,11 +394,11 @@ export function ConfigurationCockpitPage() {
                       className="relative p-6 rounded-lg border-2 transition-all hover:scale-105"
                       style={{
                         backgroundColor: themeConfig.background,
-                        borderColor: theme === key ? themeColors.primary : themeConfig.border,
-                        boxShadow: theme === key ? `0 0 0 2px ${themeColors.primary}` : 'none'
+                        borderColor: currentTheme === key ? themeColors.primary : themeConfig.border,
+                        boxShadow: currentTheme === key ? `0 0 0 2px ${themeColors.primary}` : 'none'
                       }}
                     >
-                      {theme === key && (
+                      {currentTheme === key && (
                         <CheckCircle 
                           className="absolute top-2 right-2 h-6 w-6"
                           style={{ color: themeColors.primary }}
