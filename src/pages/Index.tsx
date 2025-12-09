@@ -33,12 +33,59 @@ const LandingPage: React.FC = () => {
     setCurrentView(view);
   }, []);
 
-  // Main Navigation Pages
-  if (currentView === "morning") return <MorningBriefPage onBack={() => handleNavigate("landing")} />;
-  if (currentView === "evening") return <EveningSummary onBack={() => handleNavigate("landing")} />;
-  if (currentView === "qa") return <OnDemandQAPage onBack={() => handleNavigate("landing")} />;
-  if (currentView === "configuration") return <ConfigurationCockpit onBack={() => handleNavigate("landing")} />;
+  const handleBackToLanding = useCallback(() => {
+    setCurrentView("landing");
+  }, []);
 
+  // Render different views based on currentView
+  if (currentView === "morning") {
+    return <MorningBriefPage onBack={handleBackToLanding} />;
+  }
+  
+  if (currentView === "evening") {
+    return <EveningSummary onBack={handleBackToLanding} />;
+  }
+  
+  if (currentView === "qa") {
+    return <OnDemandQAPage onBack={handleBackToLanding} />;
+  }
+  
+  if (currentView === "configuration") {
+    return <ConfigurationCockpit onBack={handleBackToLanding} />;
+  }
+  
+  if (currentView === "reports") {
+    return (
+      <div
+        style={{
+          backgroundColor: themeColors.background,
+          color: themeColors.foreground,
+          minHeight: "100vh"
+        }}
+        className="flex items-center justify-center"
+      >
+        <div className="text-center">
+          <FileText className="h-16 w-16 mx-auto mb-4" style={{ color: themeColors.primary }} />
+          <h2 className="text-2xl font-bold mb-2">Reports</h2>
+          <p style={{ color: themeColors.accent }} className="mb-4">
+            Reports feature coming soon
+          </p>
+          <button
+            onClick={handleBackToLanding}
+            style={{
+              backgroundColor: themeColors.primary,
+              color: themeColors.background
+            }}
+            className="px-6 py-2 rounded-lg hover:opacity-90"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing Page View
   return (
     <div
       style={{
