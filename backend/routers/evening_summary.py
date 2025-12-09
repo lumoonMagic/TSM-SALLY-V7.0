@@ -1,15 +1,14 @@
 """
 Evening Summary Router - FIXED for /api/v1/evening-summary endpoint
 Provides end-of-day analytics for trial supply management
-Supports both demo mode and production mode with PostgreSQL queries
+Supports both demo mode and production mode
 """
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
-import os
+from typing import List, Optional
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -189,7 +188,7 @@ def get_demo_evening_summary() -> EveningSummaryResponse:
     )
 
 # ============================================================================
-# Endpoints - FIXED: Root path instead of /evening
+# Endpoints - FIXED: Using empty string "" for root path
 # ============================================================================
 
 @router.get("", response_model=EveningSummaryResponse, tags=["Evening Summary"])
