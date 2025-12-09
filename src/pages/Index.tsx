@@ -1,204 +1,199 @@
-import React, { useState, useEffect } from 'react';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { 
-  MessageSquare, 
-  Calendar, 
-  Clock, 
-  Settings, 
-  Menu,
-  HelpCircle,
-  Bell,
-  User
-} from 'lucide-react';
-import { useApp } from '@/contexts/AppContext';
-import { OnDemandQA } from '@/components/OnDemandQA';
-import { MorningBrief } from '@/components/MorningBrief';
-import { EveningSummary } from '@/components/EveningSummary';
-import { ConfigurationCockpitPage } from '@/components/ui/ConfigurationCockpit';
+"use client";
 
-type ActiveSection = 'qa' | 'morning' | 'summary' | 'config';
+import React, { useState, useEffect, useCallback } from "react";
+import { Sun, Moon, Calendar, Clock, MessageSquare, FileText, Settings, ChevronRight } from "lucide-react";
+import MorningBriefPage from "./morning-brief-page";
+import { EveningSummary } from "@/components/EveningSummary";
+import OnDemandQAPage from "./qa-assistant-page";
+import { ConfigurationCockpit } from "@/components/ui/ConfigurationCockpit";
+import { useGlobalTheme } from "@/hooks/useGlobalTheme";
 
-const Index = () => {
-  const { isInitialized, currentUser } = useApp();
-  const [activeSection, setActiveSection] = useState<ActiveSection>('qa');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+type ViewType = "landing" | "morning" | "evening" | "qa" | "reports" | "configuration";
 
-  if (!isInitialized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-white mb-2">Initializing Sally</h2>
-          <p className="text-slate-400">Setting up your Trial Supply Manager assistant...</p>
-        </div>
-      </div>
-    );
-  }
+const LandingPage: React.FC = () => {
+  const [currentView, setCurrentView] = useState<ViewType>("landing");
+  const [currentTime, setCurrentTime] = useState<string>("");
+  const { themeColors } = useGlobalTheme();
 
-  const navigationItems = [
-    {
-      id: 'qa' as ActiveSection,
-      label: 'On-Demand Q&A',
-      icon: MessageSquare,
-      description: 'Chat with AI assistant'
-    },
-    {
-      id: 'morning' as ActiveSection,
-      label: 'Morning Brief',
-      icon: Calendar,
-      description: 'Daily priorities & insights'
-    },
-    {
-      id: 'summary' as ActiveSection,
-      label: 'End of Day Summary',
-      icon: Clock,
-      description: 'Progress & tomorrow\'s plan'
-    },
-    {
-      id: 'config' as ActiveSection,
-      label: 'Configuration',
-      icon: Settings,
-      description: 'LLM & database settings'
-    }
-  ];
+  // Time update
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const renderActiveSection = () => {
-    switch (activeSection) {
-      case 'qa':
-        return <OnDemandQA />;
-      case 'morning':
-        return <MorningBrief />;
-      case 'summary':
-        return <EveningSummary />;
-      case 'config':
-        return <ConfigurationCockpitPage />;
-      default:
-        return <OnDemandQA />;
-    }
-  };
+  const handleNavigate = useCallback((view: ViewType) => {
+    setCurrentView(view);
+  }, []);
+
+  // Main Navigation Pages
+  if (currentView === "morning") return <MorningBriefPage onBack={() => handleNavigate("landing")} />;
+  if (currentView === "evening") return <EveningSummary onBack={() => handleNavigate("landing")} />;
+  if (currentView === "qa") return <OnDemandQAPage onBack={() => handleNavigate("landing")} />;
+  if (currentView === "configuration") return <ConfigurationCockpit onBack={() => handleNavigate("landing")} />;
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex bg-background">
-        {/* ✅ FIX 1: Sidebar with proper icon sizing when collapsed */}
-        <div className={`bg-sidebar-background border-r border-sidebar-border transition-all duration-300 flex-shrink-0 ${
-          sidebarCollapsed ? 'w-16' : 'w-64'
-        }`}>
-          <div className="p-4 h-full flex flex-col">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-8 px-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-                <span className="text-primary-foreground font-bold text-sm">S</span>
-              </div>
-              {!sidebarCollapsed && (
-                <div>
-                  <h1 className="text-sidebar-foreground font-bold text-lg">Sally</h1>
-                  <p className="text-sidebar-foreground/70 text-xs">TSM Assistant</p>
-                </div>
-              )}
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="ml-auto text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors flex-shrink-0"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
+    <div
+      style={{
+        backgroundColor: themeColors.background,
+        color: themeColors.foreground,
+        minHeight: "100vh"
+      }}
+      className="flex flex-col"
+    >
+      {/* Header */}
+      <header
+        style={{
+          backgroundColor: themeColors.muted,
+          borderColor: themeColors.border
+        }}
+        className="border-b px-6 py-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div
+              style={{
+                backgroundColor: themeColors.primary,
+                color: themeColors.background
+              }}
+              className="rounded-lg p-2"
+            >
+              <Sun className="h-6 w-6" />
             </div>
-
-            {/* ✅ FIX 2: Navigation with proper icon sizing */}
-            <nav className="space-y-2 mb-8">
-              {navigationItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeSection === item.id;
-                
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveSection(item.id)}
-                    className={`w-full flex items-center gap-3 rounded-lg transition-colors text-left ${
-                      sidebarCollapsed 
-                        ? 'px-2 py-3 justify-center' 
-                        : 'px-3 py-3'
-                    } ${
-                      isActive 
-                        ? 'bg-sidebar-primary text-sidebar-primary-foreground' 
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                    }`}
-                    title={sidebarCollapsed ? item.label : undefined}
-                  >
-                    {/* ✅ FIX 3: Icon size fixed to h-5 w-5 always */}
-                    <Icon className="h-5 w-5 flex-shrink-0" />
-                    {!sidebarCollapsed && (
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{item.label}</div>
-                        <div className="text-xs opacity-75 truncate">{item.description}</div>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* User Profile */}
-            <div className="mt-auto pt-4 border-t border-sidebar-border">
-              <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : 'px-2'}`}>
-                <Avatar className="h-10 w-10 flex-shrink-0">
-                  <AvatarImage src={currentUser.avatar} />
-                  <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
-                    {currentUser.name.split(' ').map(n => n[0]).join('')}
-                  </AvatarFallback>
-                </Avatar>
-                {!sidebarCollapsed && (
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sidebar-foreground font-medium text-sm truncate">{currentUser.name}</div>
-                    <div className="text-sidebar-foreground/70 text-xs truncate">{currentUser.role}</div>
-                  </div>
-                )}
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold">Sally TSM</h1>
+              <p style={{ color: themeColors.accent }} className="text-sm">
+                Your Intelligent Business Assistant
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div
+              style={{
+                backgroundColor: themeColors.muted,
+                color: themeColors.foreground
+              }}
+              className="rounded-lg px-4 py-2"
+            >
+              <Clock className="mr-2 inline h-4 w-4" />
+              {currentTime}
             </div>
           </div>
         </div>
+      </header>
 
-        {/* ✅ FIX 4: Main Content with flex-1 to expand when sidebar collapses */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Top Bar */}
-          <header className="bg-card border-b border-border px-6 py-4 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-card-foreground font-semibold truncate">
-                    {navigationItems.find(item => item.id === activeSection)?.label}
-                  </h2>
-                  <p className="text-muted-foreground text-sm truncate">
-                    {navigationItems.find(item => item.id === activeSection)?.description}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-card-foreground">
-                  <Bell className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-card-foreground">
-                  <HelpCircle className="h-4 w-4" />
-                </Button>
-                <Badge variant="outline" className="border-primary text-primary">
-                  Demo Mode
-                </Badge>
-              </div>
-            </div>
-          </header>
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto p-6">
+        <div className="mx-auto max-w-7xl space-y-8">
+          {/* Welcome Section */}
+          <section className="text-center">
+            <h2 className="mb-4 text-4xl font-bold">Welcome Back!</h2>
+            <p style={{ color: themeColors.accent }} className="text-lg">
+              Choose a service to get started
+            </p>
+          </section>
 
-          {/* ✅ FIX 5: Content Area expands properly */}
-          <main className="flex-1 overflow-hidden">
-            {renderActiveSection()}
-          </main>
+          {/* Service Cards Grid */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {/* Morning Brief Card */}
+            <ServiceCard
+              icon={<Sun className="h-8 w-8" />}
+              title="Morning Brief"
+              description="Start your day with key insights and updates"
+              themeColors={themeColors}
+              onClick={() => handleNavigate("morning")}
+            />
+
+            {/* Evening Summary Card */}
+            <ServiceCard
+              icon={<Moon className="h-8 w-8" />}
+              title="Evening Summary"
+              description="Review your day's performance and metrics"
+              themeColors={themeColors}
+              onClick={() => handleNavigate("evening")}
+            />
+
+            {/* On-Demand Q&A Card */}
+            <ServiceCard
+              icon={<MessageSquare className="h-8 w-8" />}
+              title="On-Demand Q&A"
+              description="Get instant answers to your business questions"
+              themeColors={themeColors}
+              onClick={() => handleNavigate("qa")}
+            />
+
+            {/* Reports Card */}
+            <ServiceCard
+              icon={<FileText className="h-8 w-8" />}
+              title="Reports"
+              description="Access detailed analytics and reports"
+              themeColors={themeColors}
+              onClick={() => handleNavigate("reports")}
+            />
+
+            {/* Configuration Card */}
+            <ServiceCard
+              icon={<Settings className="h-8 w-8" />}
+              title="Configuration"
+              description="Manage your preferences and settings"
+              themeColors={themeColors}
+              onClick={() => handleNavigate("configuration")}
+            />
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </main>
+    </div>
   );
 };
 
-export default Index;
+// Service Card Component
+interface ServiceCardProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  themeColors: any;
+  onClick: () => void;
+}
+
+const ServiceCard: React.FC<ServiceCardProps> = ({ icon, title, description, themeColors, onClick }) => {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        backgroundColor: themeColors.muted,
+        borderColor: themeColors.border,
+        color: themeColors.foreground
+      }}
+      className="group rounded-xl border p-6 text-left transition-all hover:shadow-lg"
+    >
+      <div className="flex items-start justify-between">
+        <div
+          style={{
+            backgroundColor: themeColors.primary,
+            color: themeColors.background
+          }}
+          className="rounded-lg p-3"
+        >
+          {icon}
+        </div>
+        <ChevronRight
+          style={{ color: themeColors.accent }}
+          className="h-5 w-5 transition-transform group-hover:translate-x-1"
+        />
+      </div>
+      <h3 className="mb-2 mt-4 text-xl font-semibold">{title}</h3>
+      <p style={{ color: themeColors.accent }} className="text-sm">
+        {description}
+      </p>
+    </button>
+  );
+};
+
+export default LandingPage;
