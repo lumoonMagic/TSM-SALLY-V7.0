@@ -1,11 +1,8 @@
 /**
- * Configuration Cockpit Component - COMPLETE VERSION
- * ✅ ALL ORIGINAL FEATURES
- * ✅ Schema Management (Deploy + Download)
- * ✅ Database Connection
- * ✅ LLM Provider
- * ✅ Vector Database
- * ✅ Navigation back button
+ * Configuration Cockpit Component - FIXED SAVE API
+ * ✅ Correct API structure for settings
+ * ✅ Proper data format matching backend expectations
+ * ✅ Fixed: Settings now reflect across all screens
  */
 
 'use client'
@@ -116,11 +113,17 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
   }, [])
 
   useEffect(() => {
+    // Broadcast mode changes to other components
     window.dispatchEvent(new CustomEvent('applicationModeChange', { detail: { mode: applicationMode } }))
+    
+    // Save mode change immediately
     const config = JSON.parse(localStorage.getItem('sally_config') || '{}')
     config.applicationMode = applicationMode
     localStorage.setItem('sally_config', JSON.stringify(config))
-  }, [applicationMode])
+    
+    // Broadcast theme change as well
+    window.dispatchEvent(new CustomEvent('themeChange', { detail: { theme: selectedTheme } }))
+  }, [applicationMode, selectedTheme])
 
   const loadSchemaStatus = async () => {
     try {
@@ -194,6 +197,7 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
 
   const handleSaveSettings = async () => {
     try {
+      // Save to localStorage first
       const fullConfig = {
         applicationMode,
         theme: selectedTheme.value,
@@ -203,21 +207,73 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
       }
 
       localStorage.setItem('sally_config', JSON.stringify(fullConfig))
+      console.log('✅ Settings saved to localStorage:', fullConfig)
+
+      // **FIXED: Correct API structure matching backend expectations**
+      const backendPayload = {
+        llm_provider: {
+          provider: llmConfig.provider,
+          chat_model: llmConfig.model,
+          api_key: llmConfig.apiKey || undefined,
+          temperature: 0.2
+        },
+        database: {
+          database_type: databaseConfig.type === 'postgresql' ? 'postgres' : databaseConfig.type,
+          host: databaseConfig.host,
+          port: parseInt(databaseConfig.port),
+          database: databaseConfig.database,
+          username: databaseConfig.user,
+          password: databaseConfig.password
+        },
+        vector_store: {
+          vector_store_type: vectorDbConfig.type === 'postgres_pgvector' ? 'pgvector' : vectorDbConfig.type
+        },
+        features: {
+          rag_enabled: true,
+          scenarios_enabled: true,
+          morning_brief_enabled: true,
+          evening_summary_enabled: true
+        }
+      }
+
+      console.log('📤 Sending to backend:', backendPayload)
 
       const response = await fetch(`${API_URL}/api/v1/settings/app-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullConfig)
+        body: JSON.stringify(backendPayload)
       })
 
+      const data = await response.json()
+      console.log('📥 Backend response:', data)
+
       if (response.ok) {
-        alert('✅ Settings saved successfully!')
+        alert('✅ Settings saved successfully!\n\n' + 
+              'Settings are now active across all screens.\n\n' +
+              (data.environment_variables 
+                ? 'Environment variables to update:\n' + data.environment_variables.slice(0, 3).join('\n')
+                : ''))
+        
+        // Broadcast settings change to all components
+        window.dispatchEvent(new CustomEvent('settingsChanged', { 
+          detail: { 
+            config: fullConfig,
+            timestamp: new Date().toISOString()
+          } 
+        }))
+        
+        // Reload page to apply changes everywhere
+        setTimeout(() => {
+          window.location.reload()
+        }, 1500)
       } else {
-        alert('⚠️ Settings saved locally (backend unavailable)')
+        alert('⚠️ Settings saved locally but backend sync failed\n\n' + 
+              (data.detail || 'Check backend logs'))
       }
     } catch (error) {
-      console.error('Error saving:', error)
-      alert('⚠️ Settings saved locally')
+      console.error('❌ Error saving settings:', error)
+      alert('⚠️ Settings saved to localStorage only\n\n' + 
+            'Backend connection failed. Settings will persist in browser but may not sync.')
     }
   }
 
@@ -227,7 +283,7 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          database_type: databaseConfig.type,
+          database_type: databaseConfig.type === 'postgresql' ? 'postgres' : databaseConfig.type,
           host: databaseConfig.host,
           port: parseInt(databaseConfig.port),
           database: databaseConfig.database,
@@ -239,9 +295,12 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        alert(`✅ Database connection successful!\n\nVersion: ${data.database_version || 'N/A'}`)
+        alert(`✅ Database connection successful!\n\n` +
+              `Type: ${data.details?.database_type || 'N/A'}\n` +
+              `Version: ${data.details?.version || 'N/A'}\n` +
+              `Host: ${data.details?.host || databaseConfig.host}`)
       } else {
-        alert(`❌ Database connection failed!\n\n${data.error || 'Unknown error'}`)
+        alert(`❌ Database connection failed!\n\n${data.message || 'Unknown error'}`)
       }
     } catch (error) {
       alert('❌ Connection error: ' + error)
@@ -262,9 +321,11 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        alert(`✅ LLM connection successful!\n\nProvider: ${llmConfig.provider}\nModel: ${data.model || 'default'}`)
+        alert(`✅ LLM connection successful!\n\n` +
+              `Provider: ${data.details?.provider || llmConfig.provider}\n` +
+              `Model: ${data.details?.model || llmConfig.model}`)
       } else {
-        alert(`❌ LLM connection failed!\n\n${data.error || 'Unknown error'}`)
+        alert(`❌ LLM connection failed!\n\n${data.message || 'Unknown error'}`)
       }
     } catch (error) {
       alert('❌ LLM test error: ' + error)
@@ -330,7 +391,7 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
       {/* Main Content */}
       <div className="p-6 w-full">
         <div className="space-y-6">
-          {/* Schema Management - NEW SECTION */}
+          {/* Schema Management */}
           <Card style={{ backgroundColor: selectedTheme.colors.cardBg, borderColor: selectedTheme.colors.primary }}>
             <CardHeader>
               <CardTitle style={{ color: selectedTheme.colors.text }}>
@@ -345,7 +406,6 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Deploy Schema Button */}
                 <Button
                   onClick={handleDeploySchema}
                   disabled={isDeploying}
@@ -369,7 +429,6 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
                   )}
                 </Button>
 
-                {/* Download Schema Button */}
                 <Button
                   onClick={handleDownloadSchema}
                   style={{
@@ -385,7 +444,6 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
                 </Button>
               </div>
 
-              {/* Schema Status Info */}
               {schemaStatus.deployed && (
                 <div 
                   className="mt-4 p-3 rounded"
