@@ -11,69 +11,15 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Settings, Database, Palette, Zap, Save, CheckCircle } from 'lucide-react';
-
-// Theme configuration (standalone - no context needed)
-interface ThemeColors {
-  name: string;
-  primary: string;
-  secondary: string;
-  background: string;
-  foreground: string;
-  accent: string;
-  muted: string;
-  border: string;
-}
-
-const THEMES: Record<string, ThemeColors> = {
-  'default': {
-    name: 'Default',
-    primary: '#3b82f6',
-    secondary: '#64748b',
-    background: '#ffffff',
-    foreground: '#0f172a',
-    accent: '#f59e0b',
-    muted: '#f1f5f9',
-    border: '#e2e8f0'
-  },
-  'black-green': {
-    name: 'Black & Green',
-    primary: '#10b981',
-    secondary: '#059669',
-    background: '#000000',
-    foreground: '#10b981',
-    accent: '#34d399',
-    muted: '#064e3b',
-    border: '#065f46'
-  },
-  'black-yellow': {
-    name: 'Black & Yellow',
-    primary: '#fbbf24',
-    secondary: '#f59e0b',
-    background: '#000000',
-    foreground: '#fbbf24',
-    accent: '#fcd34d',
-    muted: '#78350f',
-    border: '#92400e'
-  },
-  'navy-white': {
-    name: 'Navy Blue & White',
-    primary: '#1e40af',
-    secondary: '#3b82f6',
-    background: '#0f172a',
-    foreground: '#f8fafc',
-    accent: '#60a5fa',
-    muted: '#1e293b',
-    border: '#334155'
-  }
-};
+import { useGlobalTheme, THEMES } from '@/hooks/useGlobalTheme';
 
 export function ConfigurationCockpitPage() {
   // Mode state
   const [isProductionMode, setIsProductionMode] = useState(false);
   
-  // Theme state (local - no context)
+  // Theme state
   const [currentTheme, setCurrentTheme] = useState<string>('default');
-  const [themeColors, setThemeColors] = useState<ThemeColors>(THEMES['default']);
+  const { themeColors } = useGlobalTheme();
   
   // Database state
   const [databaseType, setDatabaseType] = useState('postgresql');
@@ -92,21 +38,18 @@ export function ConfigurationCockpitPage() {
 
   // Apply theme when it changes
   useEffect(() => {
-    const colors = THEMES[currentTheme] || THEMES['default'];
-    setThemeColors(colors);
-    
-    // Apply CSS variables to root
-    const root = document.documentElement;
-    root.style.setProperty('--color-primary', colors.primary);
-    root.style.setProperty('--color-secondary', colors.secondary);
-    root.style.setProperty('--color-background', colors.background);
-    root.style.setProperty('--color-foreground', colors.foreground);
-    root.style.setProperty('--color-accent', colors.accent);
-    root.style.setProperty('--color-muted', colors.muted);
-    root.style.setProperty('--color-border', colors.border);
-
-    // Save to localStorage
-    localStorage.setItem('sally-theme', currentTheme);
+    if (currentTheme) {
+      localStorage.setItem('sally-theme', currentTheme);
+      // Trigger storage event for other tabs/windows
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'sally-theme',
+        newValue: currentTheme
+      }));
+      // Reload the page to apply theme globally
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    }
   }, [currentTheme]);
 
   const loadConfiguration = () => {
@@ -161,7 +104,7 @@ export function ConfigurationCockpitPage() {
 
   const handleThemeChange = (newTheme: string) => {
     setCurrentTheme(newTheme);
-    toast.success(`Theme changed to ${THEMES[newTheme]?.name || 'Default'}`);
+    toast.success(`Theme changed to ${THEMES[newTheme]?.name || 'Default'}. Page will reload...`);
   };
 
   const handleDatabaseConfigChange = (field: string, value: string) => {
@@ -173,13 +116,15 @@ export function ConfigurationCockpitPage() {
 
   return (
     <div 
-      className="min-h-screen w-full p-6"
+      className="min-h-screen p-6"
       style={{
+        width: '100%',
+        maxWidth: '100%',
         backgroundColor: themeColors.background,
         color: themeColors.foreground
       }}
     >
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -236,7 +181,8 @@ export function ConfigurationCockpitPage() {
           <TabsContent value="general" className="space-y-4">
             <Card style={{ 
               backgroundColor: themeColors.background,
-              borderColor: themeColors.border 
+              borderColor: themeColors.border,
+              width: '100%'
             }}>
               <CardHeader>
                 <CardTitle style={{ color: themeColors.foreground }}>
@@ -268,7 +214,8 @@ export function ConfigurationCockpitPage() {
           <TabsContent value="database" className="space-y-4">
             <Card style={{ 
               backgroundColor: themeColors.background,
-              borderColor: themeColors.border 
+              borderColor: themeColors.border,
+              width: '100%'
             }}>
               <CardHeader>
                 <CardTitle style={{ color: themeColors.foreground }}>
@@ -276,7 +223,6 @@ export function ConfigurationCockpitPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Database Type */}
                 <div className="space-y-2">
                   <Label style={{ color: themeColors.foreground }}>
                     Database Type
@@ -297,7 +243,6 @@ export function ConfigurationCockpitPage() {
                   </Select>
                 </div>
 
-                {/* Connection Fields */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label style={{ color: themeColors.foreground }}>Host</Label>
@@ -378,11 +323,12 @@ export function ConfigurationCockpitPage() {
           <TabsContent value="theme" className="space-y-4">
             <Card style={{ 
               backgroundColor: themeColors.background,
-              borderColor: themeColors.border 
+              borderColor: themeColors.border,
+              width: '100%'
             }}>
               <CardHeader>
                 <CardTitle style={{ color: themeColors.foreground }}>
-                  Theme Customization
+                  Theme Customization (Applies to All Pages)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -429,6 +375,9 @@ export function ConfigurationCockpitPage() {
                     </button>
                   ))}
                 </div>
+                <p className="text-sm text-center" style={{ color: themeColors.secondary }}>
+                  💡 Tip: After selecting a theme, the page will reload to apply it globally to all pages
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
