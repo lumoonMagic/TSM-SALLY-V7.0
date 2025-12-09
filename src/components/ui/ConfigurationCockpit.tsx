@@ -31,6 +31,9 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
     'black-yellow': 'Black & Yellow',
     'navy-white': 'Navy Blue & White'
   };
+  const themesToDisplay = availableThemes && availableThemes.length > 0 
+  ? availableThemes 
+  : ['default', 'black-green', 'black-yellow', 'navy-white'];
 
   return (
     <div
@@ -103,7 +106,7 @@ export function ConfigurationCockpit({ onBack }: ConfigurationCockpitProps) {
             </p>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {availableThemes.map((themeName) => {
+              {themesToDisplay.map((themeName) => {
                 const isSelected = selectedTheme === themeName;
                 return (
                   <button
